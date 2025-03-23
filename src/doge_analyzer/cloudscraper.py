@@ -18,7 +18,12 @@ def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
         None (saves data to a JSON file)
     """
     # Validate endpoint
-    valid_endpoints = ["/savings/contracts", "/savings/grants", "/savings/leases"]
+    valid_endpoints = [
+        "/savings/contracts",
+        "/savings/grants",
+        "/savings/leases",
+        "/payments",
+    ]
     if endpoint not in valid_endpoints:
         print(f"Invalid endpoint: {endpoint}. Must be one of {valid_endpoints}")
         return
@@ -110,7 +115,12 @@ def main():
         "--endpoint",
         type=str,
         default="/savings/contracts",
-        choices=["/savings/contracts", "/savings/grants", "/savings/leases"],
+        choices=[
+            "/savings/contracts",
+            "/savings/grants",
+            "/savings/leases",
+            "/payments",
+        ],
         help="API endpoint to fetch data from (default: /savings/contracts)",
     )
     parser.add_argument(
