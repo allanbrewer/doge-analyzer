@@ -4,6 +4,7 @@ import time
 import argparse
 import os
 import logging
+import datetime
 
 # Initialize logging
 logging.basicConfig(
@@ -11,31 +12,29 @@ logging.basicConfig(
 )
 
 
-def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
+def fetch_savings_data(award_type="contracts", max_pages=1, per_page=100):
     """
     Fetch savings data from the specified DOGE API endpoint.
 
     Args:
-        endpoint (str): API endpoint, e.g., '/savings/contracts', '/savings/grants', '/savings/leases'
-        page (int): Page number for pagination
+        award_type (str): Type of award, e.g., 'contracts', 'grants', 'leases'
+        max_pages (int): Maximum number of pages to fetch
         per_page (int): Number of records per page
 
     Returns:
         None (saves data to a JSON file)
     """
+    if award_type == "leases":
+        endpoint = "/savings/leases"
+    elif award_type == "grants":
+        endpoint = "/savings/grants"
+    elif award_type == "contracts":
+        endpoint = "/savings/contracts"
+    else:
+        logging.info(f"Invalid award type: {award_type}")
+        return
 
     logging.info(f"Fetching data from endpoint: {endpoint}")
-
-    # Validate endpoint
-    valid_endpoints = [
-        "/savings/contracts",
-        "/savings/grants",
-        "/savings/leases",
-        "/payments",
-    ]
-    if endpoint not in valid_endpoints:
-        logging.info(f"Invalid endpoint: {endpoint}. Must be one of {valid_endpoints}")
-        return
 
     # Base URL and full endpoint
     base_url = "https://api.doge.gov"
@@ -64,7 +63,12 @@ def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
     while has_more:
         try:
             # Add pagination to the request
-            params = {"page": current_page, "per_page": per_page}
+            params = {
+                "page": current_page,
+                "per_page": per_page,
+                "sort_by": "date",
+                "sort_order": "desc",
+            }
             response = requests.get(url, headers=headers, params=params, timeout=10)
 
             # Check status code
@@ -88,7 +92,7 @@ def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
                 total_pages = data.get("meta", {}).get("pages", None)
 
                 # Check current page vs requested pages
-                if current_page >= page:
+                if current_page >= max_pages:
                     has_more = False
                     logging.info(f"Reached the last page: {total_pages}")
 
@@ -120,7 +124,7 @@ def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
 
     # Save to file
     if all_savings:
-        filename = f"{endpoint_dir}/doge_{endpoint.split('/')[-1]}.json"  # e.g., doge_contracts.json
+        filename = f"{endpoint_dir}/doge_{endpoint.split('/')[-1]}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.json"  # e.g., doge_contracts.json
         with open(filename, "w") as f:
             json.dump(all_savings, f, indent=2)
         logging.info(f"Saved {len(all_savings)} records to {filename}")
@@ -137,16 +141,15 @@ def main():
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Fetch savings data from DOGE API")
     parser.add_argument(
-        "--endpoint",
+        "--award_type",
         type=str,
-        default="/savings/contracts",
+        default="contracts",
         choices=[
-            "/savings/contracts",
-            "/savings/grants",
-            "/savings/leases",
-            "/payments",
+            "contracts",
+            "grants",
+            "leases",
         ],
-        help="API endpoint to fetch data from (default: /savings/contracts)",
+        help="Type of award to fetch data from (default: contracts)",
     )
     parser.add_argument(
         "--per_page",
@@ -155,15 +158,17 @@ def main():
         help="Number of records per page (default: 100)",
     )
     parser.add_argument(
-        "--page",
+        "--max_pages",
         type=int,
         default=1,
-        help="Starting page (default: 1)",
+        help="Maximum number of pages to fetch (default: 1)",
     )
     args = parser.parse_args()
 
     # Run the fetch function with the specified endpoint
-    fetch_savings_data(endpoint=args.endpoint, page=args.page, per_page=args.per_page)
+    fetch_savings_data(
+        award_type=args.award_type, max_pages=args.max_pages, per_page=args.per_page
+    )
 
 
 if __name__ == "__main__":
