@@ -7,7 +7,7 @@ url = "https://doge.gov/savings"
 headers = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
     "Accept": "text/html",
-    "Cookie": "__cf_bm=LSAROZQkfOm3Zhl0_jiAX6b_pguL8uUGW2U03wEtZi0-1742695473-1.0.1.1-V7YC8I6mOUxuYLao2B.fVlrnx4smcXRvt.WmfekvuSwuRjeQ8yWmzs6eEEd4a2SI3KEfUAA0O47KH1YExYrZHSEyMNyhTeNEVaSWV6bjZrg",
+    "Cookie": "__cf_bm=LSAROZQkfOm3Zhl0_jiAX6b_pguL8uUGW2U03wEtZi0-1742695473-1.0.1.1-...",
 }
 response = requests.get(url, headers=headers)
 html_content = response.text
