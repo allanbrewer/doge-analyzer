@@ -1,9 +1,11 @@
 [tool.poetry]
 name = "doge-analyzer"
 version = "0.1.0"
-description = "A web scraper project to analyze data."
-authors = ["Your Name <your.email@example.com>"]
+description = "DOGE API download and analysis."
+authors = ["Allan Brewer <allan.brewer@yahoo.com>"]
 readme = "README.md"
+license = "Apache-2.0"
+
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -13,6 +15,6 @@ cloudscraper = "^1.2.1"
 
 [tool.poetry.group.dev.dependencies]
 
-[build-system]
+[build-system]  
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
