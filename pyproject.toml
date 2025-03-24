@@ -6,7 +6,6 @@ authors = ["Allan Brewer <allan.brewer@yahoo.com>"]
 readme = "README.md"
 license = "Apache-2.0"
 
-
 [tool.poetry.dependencies]
 python = "^3.11"
 requests = "^2.31.0"
