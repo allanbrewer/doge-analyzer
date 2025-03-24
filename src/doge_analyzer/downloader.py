@@ -1,8 +1,14 @@
-import cloudscraper
 import json
 import requests
 import time
 import argparse
+import os
+import logging
+
+# Initialize logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
@@ -17,6 +23,9 @@ def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
     Returns:
         None (saves data to a JSON file)
     """
+
+    logging.info(f"Fetching data from endpoint: {endpoint}")
+
     # Validate endpoint
     valid_endpoints = [
         "/savings/contracts",
@@ -25,11 +34,8 @@ def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
         "/payments",
     ]
     if endpoint not in valid_endpoints:
-        print(f"Invalid endpoint: {endpoint}. Must be one of {valid_endpoints}")
+        logging.info(f"Invalid endpoint: {endpoint}. Must be one of {valid_endpoints}")
         return
-
-    # Initialize cloudscraper to handle Cloudflare challenges
-    scraper = cloudscraper.create_scraper()
 
     # Base URL and full endpoint
     base_url = "https://api.doge.gov"
@@ -37,57 +43,76 @@ def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
 
     # Headers to mimic a browser (add API key if required by docs)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
         "Accept": "application/json",
-        "Referer": "https://doge.gov/savings",
     }
 
     # Store all savings data
     all_savings = []
-
+    current_page = 1
     has_more = True
+
+    # Check for data directory to save
+    data_dir = "./data"
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+
+    # Check for endpoint directory
+    endpoint_dir = f"{data_dir}/{endpoint.split('/')[-1]}"
+    if not os.path.exists(endpoint_dir):
+        os.makedirs(endpoint_dir)
 
     while has_more:
         try:
             # Add pagination to the request
-            params = {"page": page, "per_page": per_page}
-            response = scraper.get(url, headers=headers, params=params, timeout=10)
+            params = {"page": current_page, "per_page": per_page}
+            response = requests.get(url, headers=headers, params=params, timeout=10)
 
             # Check status code
             if response.status_code == 200:
                 data = response.json()
+                logging.info(f"Response data: {data.get('success', False)}")
 
                 # Extract savings data (adjust key based on response structure)
-                savings = data.get("data", [])  # Could be "results", "contracts", etc.
+                savings = data.get("result", {}).get(f"{endpoint.split('/')[-1]}", [])
                 if not savings:  # No more data
                     has_more = False
+                    logging.info("No more data found.")
                     break
 
                 all_savings.extend(savings)
-                print(
-                    f"Page {page}: Retrieved {len(savings)} records (Total: {len(all_savings)})"
+                logging.info(
+                    f"Page {current_page}: Retrieved {len(savings)} records (Total: {len(all_savings)})"
                 )
 
-                # Check pagination metadata
+                # Get number of total pages
                 total_pages = data.get("meta", {}).get("pages", None)
-                if total_pages and page >= total_pages:
+
+                # Check current page vs requested pages
+                if current_page >= page:
                     has_more = False
+                    logging.info(f"Reached the last page: {total_pages}")
+
+                # Check total pages vs current page
+                logging.info(f"Total pages: {total_pages}")
+                if total_pages and current_page >= total_pages:
+                    has_more = False
+                    logging.info(f"Reached the last page: {total_pages}")
                 else:
-                    page += 1
+                    current_page += 1
 
             elif response.status_code == 403:
-                print("403 Forbidden - Check headers, cookies, or API key")
-                print(response.text)
+                logging.info("403 Forbidden - Check headers, cookies, or API key")
+                logging.info(response.text)
                 break
             elif response.status_code == 429:
-                print("429 Too Many Requests - Sleeping for 60 seconds")
+                logging.info("429 Too Many Requests - Sleeping for 60 seconds")
                 time.sleep(60)
             else:
-                print(f"Error {response.status_code}: {response.text}")
+                logging.info(f"Error {response.status_code}: {response.text}")
                 break
 
         except Exception as e:
-            print(f"Request failed: {e}")
+            logging.info(f"Request failed: {e}")
             break
 
         # Avoid rate limiting
@@ -95,17 +120,17 @@ def fetch_savings_data(endpoint="/savings/contracts", page=1, per_page=100):
 
     # Save to file
     if all_savings:
-        filename = f"doge_{endpoint.split('/')[-1]}.json"  # e.g., doge_contracts.json
+        filename = f"{endpoint_dir}/doge_{endpoint.split('/')[-1]}.json"  # e.g., doge_contracts.json
         with open(filename, "w") as f:
             json.dump(all_savings, f, indent=2)
-        print(f"Saved {len(all_savings)} records to {filename}")
+        logging.info(f"Saved {len(all_savings)} records to {filename}")
 
-        # Print sample of first few records
-        print("Sample of first 3 records:")
-        for item in all_savings[:3]:
-            print(item)
+        # Print sample of first record
+        logging.info("Sample of first record:")
+        for item in all_savings[:1]:
+            logging.info(item)
     else:
-        print("No data retrieved")
+        logging.info("No data retrieved")
 
 
 def main():

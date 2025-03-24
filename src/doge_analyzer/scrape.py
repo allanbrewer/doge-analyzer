@@ -79,10 +79,3 @@ else:
     print(
         "No contracts found. Check additional script tags or share a sample with contract data."
     )
-
-# https://doge.gov/api/payments, /v1/payments, or /payments/list
-
-# curl -s -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36" -H "Cookie: __cf_bm=WhuiG9IWxCiNioq0RG0ZeZNrc42z_sc177rhoUE9GOg-1742698146-1.0.1.1-yUBjqriUKIpBpFXlmShEtzVWZ7Ubo.vKOdm_7djx6dmuolvL23OBI7RyKXK5gvRiZZ8rptc2RPrRAWxVNilcKBn.b_Aaxb0v5Frq7bjAHCE" -H "Referer: https://doge.gov/savings" https://doge.gov/api/ -w "%{http_code}"
-# I am inspecting DOGE's website and can't find any data coming from an API. All data looks like it is streamed via the React Server Component using a URL like this https://doge.gov/payments?_rsc=1rdb0 , this one is for the payments data and the Response contains all the data as an RSC payload and not user friendly to parse.
-
-# curl -s https://doge.gov/api/ping
