@@ -12,11 +12,12 @@ logging.basicConfig(
 )
 
 
-def fetch_savings_data(award_type="contracts", max_pages=1, per_page=100):
+def fetch_data(data_type="savings", award_type="contracts", max_pages=1, per_page=100):
     """
     Fetch savings data from the specified DOGE API endpoint.
 
     Args:
+        data_type (str): Type of data, e.g., 'savings' or 'payments'
         award_type (str): Type of award, e.g., 'contracts', 'grants', 'leases'
         max_pages (int): Maximum number of pages to fetch
         per_page (int): Number of records per page
@@ -24,14 +25,23 @@ def fetch_savings_data(award_type="contracts", max_pages=1, per_page=100):
     Returns:
         None (saves data to a JSON file)
     """
-    if award_type == "leases":
-        endpoint = "/savings/leases"
-    elif award_type == "grants":
-        endpoint = "/savings/grants"
-    elif award_type == "contracts":
-        endpoint = "/savings/contracts"
+
+    if data_type == "savings":
+        sort_params = "date"
+        if award_type == "leases":
+            endpoint = "/savings/leases"
+        elif award_type == "grants":
+            endpoint = "/savings/grants"
+        elif award_type == "contracts":
+            endpoint = "/savings/contracts"
+        else:
+            logging.info(f"Invalid award type: {award_type}")
+            return
+    elif data_type == "payments":
+        sort_params = "post_date"
+        endpoint = "/payments"
     else:
-        logging.info(f"Invalid award type: {award_type}")
+        logging.info(f"Invalid data type: {data_type}")
         return
 
     logging.info(f"Fetching data from endpoint: {endpoint}")
@@ -66,7 +76,7 @@ def fetch_savings_data(award_type="contracts", max_pages=1, per_page=100):
             params = {
                 "page": current_page,
                 "per_page": per_page,
-                "sort_by": "date",
+                "sort_by": sort_params,
                 "sort_order": "desc",
             }
             response = requests.get(url, headers=headers, params=params, timeout=10)
@@ -124,9 +134,9 @@ def fetch_savings_data(award_type="contracts", max_pages=1, per_page=100):
 
     # Save to file
     if all_savings:
-        filename = f"{endpoint_dir}/doge_{endpoint.split('/')[-1]}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.json"  # e.g., doge_contracts.json
+        filename = f"{endpoint_dir}/doge_{endpoint.split('/')[-1]}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.json"
         with open(filename, "w") as f:
-            json.dump(all_savings, f, indent=2)
+            json.dump({"data": all_savings}, f, indent=2)
         logging.info(f"Saved {len(all_savings)} records to {filename}")
 
         # Print sample of first record
@@ -139,7 +149,17 @@ def fetch_savings_data(award_type="contracts", max_pages=1, per_page=100):
 
 def main():
     # Set up argument parser
-    parser = argparse.ArgumentParser(description="Fetch savings data from DOGE API")
+    parser = argparse.ArgumentParser(description="Fetch data from DOGE API")
+    parser.add_argument(
+        "--data_type",
+        type=str,
+        default="savings",
+        choices=[
+            "savings",
+            "payments",
+        ],
+        help="Type of date to fetch data from (default: savings)",
+    )
     parser.add_argument(
         "--award_type",
         type=str,
@@ -166,8 +186,11 @@ def main():
     args = parser.parse_args()
 
     # Run the fetch function with the specified endpoint
-    fetch_savings_data(
-        award_type=args.award_type, max_pages=args.max_pages, per_page=args.per_page
+    fetch_data(
+        data_type=args.data_type,
+        award_type=args.award_type,
+        max_pages=args.max_pages,
+        per_page=args.per_page,
     )
 
 
