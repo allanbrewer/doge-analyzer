@@ -25,11 +25,9 @@ logger = logging.getLogger(__name__)
 def run_example():
     """Run a simple example of the pipeline."""
     # Set paths
-    # Assuming labeled data is in doge-analyzer/data/contracts
     labeled_data_path = os.path.join(
         "data", "contracts", "doge_contracts_20250323222302.json"
     )
-    # Assuming unlabeled data is in doge-analyzer/data/unlabeled
     unlabeled_data_path = os.path.join("data", "unlabeled")
     output_dir = "results/example"
 
@@ -53,9 +51,7 @@ def run_example():
     if os.path.exists(model_path):
         logger.info(f"Loading pre-trained pipeline from {model_dir}")
         pipeline = ContractAnomalyPipeline.load_pipeline(
-            model_dir,
-            labeled_data_path=labeled_data_path,
-            bert_model_name="bert-base-uncased",
+            model_dir, labeled_data_path, bert_model_name="bert-base-uncased"
         )
     else:
         # Fit pipeline on labeled data, including BERT text feature extraction

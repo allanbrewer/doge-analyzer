@@ -3,11 +3,14 @@ Feature fusion module.
 This module handles combining text features with numerical and categorical features.
 """
 
+import os
+import os
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 import logging
 from typing import Dict, List, Optional, Tuple, Union
+from joblib import dump, load
 
 # Initialize logging
 logging.basicConfig(
@@ -29,9 +32,11 @@ class FeatureFusion:
         self.categorical_encoder = OneHotEncoder(
             sparse_output=False, handle_unknown="ignore"
         )
-        self.numerical_columns = ["normalized_value", "value_per_word"]
-        self.categorical_columns = ["agency", "vendor"]
+        self.numerical_columns = ["normalized_value"]
+        self.categorical_columns = ["agency"]
         self.fitted = False
+        self.top_n_agencies = 25
+        self.top_agencies = []
 
     def extract_numerical_features(self, df: pd.DataFrame) -> np.ndarray:
         """
@@ -88,12 +93,15 @@ class FeatureFusion:
         return categorical_data
 
     def fit(self, df: pd.DataFrame) -> None:
-        """
-        Fit the feature fusion model on training data.
+        # Get top N agencies
+        agency_counts = df["agency"].value_counts()
+        self.top_agencies = list(agency_counts.index[: self.top_n_agencies])
 
-        Args:
-            df: DataFrame containing training data
-        """
+        # Replace rare agencies with "Unknown"
+        df["agency"] = df["agency"].apply(
+            lambda x: x if x in self.top_agencies else "Unknown"
+        )
+
         # Extract numerical features
         numerical_features = self.extract_numerical_features(df)
 
@@ -131,6 +139,11 @@ class FeatureFusion:
         numerical_features = self.extract_numerical_features(df)
         if numerical_features.shape[1] > 0:
             numerical_features = self.numerical_scaler.transform(numerical_features)
+
+        # Replace rare agencies with "Unknown"
+        df["agency"] = df["agency"].apply(
+            lambda x: x if x in self.top_agencies else "Unknown"
+        )
 
         # Extract and encode categorical features
         categorical_features = self.extract_categorical_features(df)
@@ -171,3 +184,57 @@ class FeatureFusion:
         """
         self.fit(df)
         return self.transform(df, text_features)
+
+    def save_model(self, output_dir: str) -> None:
+        """
+        Save the feature fusion model components to files.
+
+        Args:
+            output_dir: Directory to save the pipeline components
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Save numerical scaler
+        numerical_path = os.path.join(output_dir, "numerical_scaler.joblib")
+        dump(self.numerical_scaler, numerical_path)
+
+        # Save categorical encoder
+        categorical_path = os.path.join(output_dir, "categorical_encoder.joblib")
+        dump(self.categorical_encoder, categorical_path)
+
+        # Save top agencies
+        top_agencies_path = os.path.join(output_dir, "top_agencies.joblib")
+        dump(self.top_agencies, top_agencies_path)
+
+        logger.info(f"Feature fusion model saved to {output_dir}")
+
+    @classmethod
+    def load_model(cls, model_dir: str) -> "FeatureFusion":
+        """
+        Load a feature fusion model from files.
+
+        Args:
+            model_dir: Directory containing the saved pipeline components
+
+        Returns:
+            Loaded FeatureFusion instance
+        """
+        # Initialize feature fusion
+        feature_fusion = cls()
+
+        # Load numerical scaler
+        numerical_path = os.path.join(model_dir, "numerical_scaler.joblib")
+        feature_fusion.numerical_scaler = load(numerical_path)
+
+        # Load categorical encoder
+        categorical_path = os.path.join(model_dir, "categorical_encoder.joblib")
+        feature_fusion.categorical_encoder = load(categorical_path)
+
+        # Load top agencies
+        top_agencies_path = os.path.join(model_dir, "top_agencies.joblib")
+        feature_fusion.top_agencies = load(top_agencies_path)
+
+        feature_fusion.fitted = True
+
+        logger.info(f"Feature fusion model loaded from {model_dir}")
+        return feature_fusion

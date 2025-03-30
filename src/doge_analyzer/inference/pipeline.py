@@ -10,6 +10,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Union
 import glob
 from tqdm import tqdm
+from joblib import dump, load
 
 from doge_analyzer.data.load import load_labeled_data, load_multiple_unlabeled_files
 from doge_analyzer.data.preprocess import (
@@ -98,9 +99,13 @@ class ContractAnomalyPipeline:
         logger.info("Initializing feature fusion")
         self.feature_fusion = FeatureFusion()
 
+        # Fit feature fusion
+        logger.info("Fitting feature fusion")
+        self.feature_fusion.fit(processed_labeled_df)
+
         # Combine features
         logger.info("Combining features")
-        combined_features = self.feature_fusion.fit_transform(
+        combined_features = self.feature_fusion.transform(
             processed_labeled_df, text_features
         )
 
@@ -230,6 +235,10 @@ class ContractAnomalyPipeline:
         model_path = os.path.join(output_dir, "anomaly_detector.joblib")
         self.anomaly_detector.save_model(model_path)
 
+        # Save feature fusion model
+        fusion_dir = os.path.join(output_dir, "feature_fusion")
+        self.feature_fusion.save_model(fusion_dir)
+
         logger.info(f"Pipeline saved to {output_dir}")
 
     @classmethod
@@ -262,6 +271,8 @@ class ContractAnomalyPipeline:
 
         # Initialize feature fusion
         pipeline.feature_fusion = FeatureFusion()
+        fusion_dir = os.path.join(model_dir, "feature_fusion")
+        pipeline.feature_fusion = FeatureFusion.load_model(fusion_dir)
 
         pipeline.fitted = True
 
