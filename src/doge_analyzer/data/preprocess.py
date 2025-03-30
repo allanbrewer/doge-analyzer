@@ -147,11 +147,9 @@ def preprocess_unlabeled_data(
     # Map USSpending.gov CSV columns to our labeled data format
     column_mapping = {
         "award_id_piid": "piid",
+        "prime_award_base_transaction_description": "description",
+        "current_total_value_of_award": "value",
         "awarding_agency_name": "agency",
-        "recipient_name": "vendor",
-        "award_amount": "value",
-        "award_description": "description",
-        "award_type": "fpds_status",
     }
 
     # Rename columns based on mapping

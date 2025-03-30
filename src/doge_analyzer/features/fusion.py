@@ -140,14 +140,19 @@ class FeatureFusion:
                 categorical_features
             )
 
-        features_to_combine = [text_features]  # Include text features
+        features_to_combine = []
+        if text_features.size > 0:  # Only include text features if they exist
+            features_to_combine.append(text_features)
         if numerical_features.shape[1] > 0:
             features_to_combine.append(numerical_features)
         if categorical_features_encoded is not None:
             features_to_combine.append(categorical_features_encoded)
 
         # Combine features horizontally
-        combined_features = np.hstack(features_to_combine)
+        if features_to_combine:
+            combined_features = np.hstack(features_to_combine)
+        else:
+            combined_features = np.array([])
 
         logger.info(f"Combined features with shape: {combined_features.shape}")
 

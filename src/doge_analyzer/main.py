@@ -16,6 +16,7 @@ from doge_analyzer.utils.visualization import (
     plot_agency_anomaly_counts,
     plot_value_vs_anomaly_score,
 )
+from doge_analyzer.inference.pipeline import ContractAnomalyPipeline  # Import the class
 
 # Initialize logging
 logging.basicConfig(
@@ -107,6 +108,12 @@ def parse_args():
         action="store_true",
         help="Do not generate visualizations",
     )
+    parser.add_argument(
+        "--load_model_dir",
+        type=str,
+        default=None,
+        help="Directory containing a pre-trained model to load (skips training)",
+    )
 
     return parser.parse_args()
 
@@ -119,21 +126,40 @@ def main():
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # Run pipeline
-    result_df = run_pipeline(
-        labeled_data_path=args.labeled_data,
-        unlabeled_data_paths=args.unlabeled_data,
-        output_dir=args.output_dir,
-        bert_model_name=args.bert_model,
-        n_estimators=args.n_estimators,
-        contamination=args.contamination,
-        batch_size=args.batch_size,
-        threshold=args.threshold,
-        extract_dir=args.extract_dir,
-        sample_size=args.sample_size,
-        department_filter=args.department,
-        save_model=not args.no_save_model,
-    )
+    if args.load_model_dir:
+        # Load pre-trained pipeline
+        logger.info(f"Loading pre-trained pipeline from {args.load_model_dir}")
+        pipeline = ContractAnomalyPipeline.load_pipeline(
+            args.load_model_dir,
+            labeled_data_path=args.labeled_data,  # Still need labeled data path for feature fusion fitting
+            bert_model_name=args.bert_model,
+        )
+        # Predict anomalies using the loaded pipeline
+        result_df = pipeline.predict(
+            unlabeled_data_paths=args.unlabeled_data,
+            output_dir=args.output_dir,
+            batch_size=args.batch_size,
+            threshold=args.threshold,
+            extract_dir=args.extract_dir,
+            sample_size=args.sample_size,
+            department_filter=args.department,
+        )
+    else:
+        # Run the full pipeline (fit and predict)
+        result_df = run_pipeline(
+            labeled_data_path=args.labeled_data,
+            unlabeled_data_paths=args.unlabeled_data,
+            output_dir=args.output_dir,
+            bert_model_name=args.bert_model,
+            n_estimators=args.n_estimators,
+            contamination=args.contamination,
+            batch_size=args.batch_size,
+            threshold=args.threshold,
+            extract_dir=args.extract_dir,
+            sample_size=args.sample_size,
+            department_filter=args.department,
+            save_model=not args.no_save_model,
+        )
 
     # Generate visualizations
     if not args.no_visualize and not result_df.empty:

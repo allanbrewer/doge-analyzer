@@ -174,9 +174,14 @@ class ContractAnomalyPipeline:
 
         # Combine features
         logger.info("Combining features")
-        combined_features = self.feature_fusion.transform(
-            processed_unlabeled_df, text_features
-        )
+        if self.text_extractor is not None:
+            combined_features = self.feature_fusion.transform(
+                processed_unlabeled_df, text_features
+            )
+        else:
+            combined_features = self.feature_fusion.transform(
+                processed_unlabeled_df, np.array([])
+            )
 
         # Predict anomalies
         logger.info("Predicting anomalies")
@@ -231,6 +236,7 @@ class ContractAnomalyPipeline:
     def load_pipeline(
         cls,
         model_dir: str,
+        labeled_data_path: str,
         bert_model_name: str = "bert-base-uncased",
     ) -> "ContractAnomalyPipeline":
         """
@@ -238,6 +244,7 @@ class ContractAnomalyPipeline:
 
         Args:
             model_dir: Directory containing the saved pipeline components
+            labeled_data_path: Path to the labeled data file
             bert_model_name: Name of the BERT model to use
 
         Returns:

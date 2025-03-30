@@ -20,4 +20,4 @@ poetry run pytest -v
 echo "Setup complete!"
 echo "You can now use the package with 'poetry run doge-analyzer'"
 echo "For example:"
-echo "poetry run doge-analyzer --labeled_data data/contracts/doge_contracts_20250323222302.json --unlabeled_data data/unlabeled --output_dir data/results"
+echo "poetry run doge-analyzer --labeled_data data/contracts/doge_contracts_20250323222302.json --unlabeled_data data/unlabeled --output_dir results"

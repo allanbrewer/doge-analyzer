@@ -46,14 +46,26 @@ def run_example():
         random_state=42,
     )
 
-    # Fit pipeline on labeled data, including BERT text feature extraction
-    logger.info("Fitting pipeline on labeled data with BERT features")
-    pipeline.fit(labeled_data_path, batch_size=32)  # Use larger batch size for example
-
-    # Save pipeline
+    # Load pipeline if it exists, otherwise fit and save
     model_dir = os.path.join(output_dir, "model")
-    pipeline.save_pipeline(model_dir)
-    logger.info(f"Pipeline saved to {model_dir}")
+    model_path = os.path.join(model_dir, "anomaly_detector.joblib")
+
+    if os.path.exists(model_path):
+        logger.info(f"Loading pre-trained pipeline from {model_dir}")
+        pipeline = ContractAnomalyPipeline.load_pipeline(
+            model_dir,
+            labeled_data_path=labeled_data_path,
+            bert_model_name="bert-base-uncased",
+        )
+    else:
+        # Fit pipeline on labeled data, including BERT text feature extraction
+        logger.info("Fitting pipeline on labeled data with BERT features")
+        pipeline.fit(labeled_data_path, batch_size=8)
+
+        # Save pipeline
+        os.makedirs(model_dir, exist_ok=True)
+        pipeline.save_pipeline(model_dir)
+        logger.info(f"Pipeline saved to {model_dir}")
 
     # Process a small sample of unlabeled data
     logger.info("Processing unlabeled data")
