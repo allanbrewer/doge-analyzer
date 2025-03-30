@@ -1,5 +1,5 @@
 """
-Simple example of using the contract anomaly detection pipeline.
+Simple example of using the contract similarity detection pipeline.
 """
 
 import os
@@ -7,12 +7,12 @@ import logging
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from doge_analyzer.inference.pipeline import ContractAnomalyPipeline
+from doge_analyzer.inference.pipeline import ContractSimilarityPipeline
 from doge_analyzer.utils.visualization import (
-    plot_anomaly_distribution,
-    plot_top_anomalies,
-    plot_agency_anomaly_counts,
-    plot_value_vs_anomaly_score,
+    plot_similarity_distribution,
+    plot_top_similarities,
+    plot_agency_similarity_counts,
+    plot_value_vs_similarity_score,
 )
 
 # Initialize logging
@@ -37,7 +37,7 @@ def run_example():
     os.makedirs(output_dir, exist_ok=True)
 
     # Initialize pipeline - using BERT features again
-    pipeline = ContractAnomalyPipeline(
+    pipeline = ContractSimilarityPipeline(
         bert_model_name="bert-base-uncased",  # Specify BERT model name
         n_estimators=100,
         contamination=0.1,
@@ -46,11 +46,11 @@ def run_example():
 
     # Load pipeline if it exists, otherwise fit and save
     model_dir = os.path.join(output_dir, "model")
-    model_path = os.path.join(model_dir, "anomaly_detector.joblib")
+    model_path = os.path.join(model_dir, "similarity_detector.joblib")
 
     if os.path.exists(model_path):
         logger.info(f"Loading pre-trained pipeline from {model_dir}")
-        pipeline = ContractAnomalyPipeline.load_pipeline(
+        pipeline = ContractSimilarityPipeline.load_pipeline(
             model_dir, labeled_data_path, bert_model_name="bert-base-uncased"
         )
     else:
@@ -77,40 +77,40 @@ def run_example():
     viz_dir = os.path.join(output_dir, "visualizations")
     os.makedirs(viz_dir, exist_ok=True)
 
-    # Plot anomaly distribution
-    plot_anomaly_distribution(result_df)
-    plt.savefig(os.path.join(viz_dir, "anomaly_distribution.png"))
+    # Plot similarity distribution
+    plot_similarity_distribution(result_df)
+    plt.savefig(os.path.join(viz_dir, "similarity_distribution.png"))
     plt.close()
 
-    # Plot top anomalies
-    plot_top_anomalies(result_df)
-    plt.savefig(os.path.join(viz_dir, "top_anomalies.png"))
+    # Plot top similarities
+    plot_top_similarities(result_df)
+    plt.savefig(os.path.join(viz_dir, "top_similarities.png"))
     plt.close()
 
-    # Plot agency anomaly counts
-    plot_agency_anomaly_counts(result_df)
-    plt.savefig(os.path.join(viz_dir, "agency_anomaly_counts.png"))
+    # Plot agency similarity counts
+    plot_agency_similarity_counts(result_df)
+    plt.savefig(os.path.join(viz_dir, "agency_similarity_counts.png"))
     plt.close()
 
-    # Plot value vs anomaly score
-    plot_value_vs_anomaly_score(result_df)
-    plt.savefig(os.path.join(viz_dir, "value_vs_anomaly_score.png"))
+    # Plot value vs similarity score
+    plot_value_vs_similarity_score(result_df)
+    plt.savefig(os.path.join(viz_dir, "value_vs_similarity_score.png"))
     plt.close()
 
     logger.info(f"Visualizations saved to {viz_dir}")
 
     # Print summary of results
-    anomaly_count = result_df["is_anomaly"].sum()
+    similarity_count = result_df["for_review"].sum()
     total_count = len(result_df)
-    logger.info(f"Found {anomaly_count} anomalous contracts out of {total_count}")
-    logger.info(f"Anomaly rate: {anomaly_count / total_count:.2%}")
+    logger.info(f"Found {similarity_count} similar contracts out of {total_count}")
+    logger.info(f"Similarity rate: {similarity_count / total_count:.2%}")
 
-    # Print top 5 anomalous contracts
-    logger.info("Top 5 anomalous contracts:")
-    top_5 = result_df.sort_values("anomaly_score").head(5)
+    # Print top 5 similar contracts
+    logger.info("Top 5 similar contracts:")
+    top_5 = result_df.sort_values("similarity_score").head(5)
     for i, row in top_5.iterrows():
         logger.info(
-            f"Contract {i+1}: {row['description']} - ${row['normalized_value']:,.2f} - Agency: {row['agency']}"
+            f"Contract {i+1}: {row['piid']} - ${row['normalized_value']:,.2f} - Agency: {row['agency']}"
         )
 
     logger.info("Example completed successfully")

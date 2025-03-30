@@ -1,6 +1,6 @@
 """
-Inference pipeline for contract anomaly detection.
-This module handles the end-to-end process of detecting anomalous contracts.
+Inference pipeline for contract similarity detection.
+This module handles the end-to-end process of detecting similar contracts.
 """
 
 import os
@@ -20,7 +20,7 @@ from doge_analyzer.data.preprocess import (
 )
 from doge_analyzer.features.text import BertFeatureExtractor
 from doge_analyzer.features.fusion import FeatureFusion
-from doge_analyzer.models.isolation_forest import ContractAnomalyDetector
+from doge_analyzer.models.isolation_forest import ContractSimilarityDetector
 
 # Initialize logging
 logging.basicConfig(
@@ -29,9 +29,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class ContractAnomalyPipeline:
+class ContractSimilarityPipeline:
     """
-    End-to-end pipeline for contract anomaly detection.
+    End-to-end pipeline for contract similarity detection.
     """
 
     def __init__(
@@ -58,7 +58,7 @@ class ContractAnomalyPipeline:
         # Initialize components
         self.text_extractor = None
         self.feature_fusion = None
-        self.anomaly_detector = None
+        self.similarity_detector = None
 
         # Track fitted state
         self.fitted = False
@@ -70,6 +70,10 @@ class ContractAnomalyPipeline:
     ) -> None:
         """
         Fit the pipeline on labeled data.
+
+        Args:
+            labeled_data_path: Path to the labeled data file
+            batch_size: Batch size for BERT feature extraction
 
         Args:
             labeled_data_path: Path to the labeled data file
@@ -105,18 +109,17 @@ class ContractAnomalyPipeline:
 
         # Combine features
         logger.info("Combining features")
-        combined_features = self.feature_fusion.transform(
-            processed_labeled_df, text_features
-        )
+        X = processed_labeled_df.drop("is_canceled", axis=1)
+        combined_features = self.feature_fusion.transform(X, text_features)
 
-        # Initialize and fit anomaly detector
-        logger.info("Initializing and fitting anomaly detector")
-        self.anomaly_detector = ContractAnomalyDetector(
+        # Initialize and fit similarity detector
+        logger.info("Initializing and fitting similarity detector")
+        self.similarity_detector = ContractSimilarityDetector(
             n_estimators=self.n_estimators,
             contamination=self.contamination,
             random_state=self.random_state,
         )
-        self.anomaly_detector.fit(combined_features)
+        self.similarity_detector.fit(combined_features)
 
         self.fitted = True
         logger.info("Pipeline fitted successfully")
@@ -132,25 +135,25 @@ class ContractAnomalyPipeline:
         department_filter: Optional[str] = None,
     ) -> pd.DataFrame:
         """
-        Predict anomalies in unlabeled data.
+        Predict similarities in unlabeled data.
 
         Args:
             unlabeled_data_paths: Path(s) to unlabeled data files or directories
             output_dir: Directory to save results
             batch_size: Batch size for BERT feature extraction
-            threshold: Custom threshold for anomaly detection
+            threshold: Custom threshold for similarity detection
             extract_dir: Directory to extract zip files
             sample_size: Number of contracts to sample
             department_filter: Filter to only include files from a specific department
 
         Returns:
-            DataFrame with anomaly predictions
+            DataFrame with similarity predictions
         """
         if not self.fitted:
             logger.error("Pipeline not fitted. Call fit() first.")
             return pd.DataFrame()
 
-        logger.info(f"Predicting anomalies using input: {unlabeled_data_paths}")
+        logger.info(f"Predicting similarities using input: {unlabeled_data_paths}")
 
         # Load unlabeled data using the updated function
         unlabeled_df = load_multiple_unlabeled_files(
@@ -188,33 +191,38 @@ class ContractAnomalyPipeline:
                 processed_unlabeled_df, np.array([])
             )
 
-        # Predict anomalies
-        logger.info("Predicting anomalies")
-        anomaly_scores = self.anomaly_detector.decision_function(combined_features)
-        anomaly_labels = self.anomaly_detector.predict_with_threshold(
+        # Predict similarities
+        logger.info("Predicting similarities")
+        similarity_scores = self.similarity_detector.decision_function(
+            combined_features
+        )
+        similarity_labels = self.similarity_detector.predict_with_threshold(
             combined_features, threshold
         )
 
         # Add predictions to DataFrame
         result_df = processed_unlabeled_df.copy()
-        result_df["anomaly_score"] = anomaly_scores
-        result_df["is_anomaly"] = anomaly_labels == -1
+        # Invert scores to represent similarity to training data
+        result_df["similarity_score"] = -similarity_scores
+        result_df["for_review"] = similarity_labels == -1
 
-        # Sort by anomaly score (ascending, as lower scores are more anomalous)
-        result_df = result_df.sort_values("anomaly_score").reset_index(drop=True)
+        # Sort by similarity score (descending, as higher scores are more similar)
+        result_df = result_df.sort_values(
+            "similarity_score", ascending=False
+        ).reset_index(drop=True)
 
         # Save results if output directory is provided
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(
                 output_dir,
-                f"anomaly_predictions_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}.csv",
+                f"similarity_predictions_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}.csv",
             )
             result_df.to_csv(output_path, index=False)
             logger.info(f"Results saved to {output_path}")
 
         logger.info(
-            f"Found {result_df['is_anomaly'].sum()} anomalous contracts out of {len(result_df)}"
+            f"Found {result_df['for_review'].sum()} similar contracts out of {len(result_df)}"
         )
 
         return result_df
@@ -231,9 +239,9 @@ class ContractAnomalyPipeline:
 
         os.makedirs(output_dir, exist_ok=True)
 
-        # Save anomaly detector
-        model_path = os.path.join(output_dir, "anomaly_detector.joblib")
-        self.anomaly_detector.save_model(model_path)
+        # Save similarity detector
+        model_path = os.path.join(output_dir, "similarity_detector.joblib")
+        self.similarity_detector.save_model(model_path)
 
         # Save feature fusion model
         fusion_dir = os.path.join(output_dir, "feature_fusion")
@@ -247,7 +255,7 @@ class ContractAnomalyPipeline:
         model_dir: str,
         labeled_data_path: str,
         bert_model_name: str = "bert-base-uncased",
-    ) -> "ContractAnomalyPipeline":
+    ) -> "ContractSimilarityPipeline":
         """
         Load a pipeline from files.
 
@@ -257,14 +265,14 @@ class ContractAnomalyPipeline:
             bert_model_name: Name of the BERT model to use
 
         Returns:
-            Loaded ContractAnomalyPipeline instance
+            Loaded ContractSimilarityPipeline instance
         """
         # Initialize pipeline
         pipeline = cls(bert_model_name=bert_model_name)
 
-        # Load anomaly detector
-        model_path = os.path.join(model_dir, "anomaly_detector.joblib")
-        pipeline.anomaly_detector = ContractAnomalyDetector.load_model(model_path)
+        # Load similarity detector
+        model_path = os.path.join(model_dir, "similarity_detector.joblib")
+        pipeline.similarity_detector = ContractSimilarityDetector.load_model(model_path)
 
         # Initialize text feature extractor
         pipeline.text_extractor = BertFeatureExtractor(bert_model_name)
@@ -295,7 +303,7 @@ def run_pipeline(
     save_model: bool = True,
 ) -> pd.DataFrame:
     """
-    Run the complete pipeline from data loading to anomaly prediction.
+    Run the complete pipeline from data loading to similarity prediction.
 
     Args:
         labeled_data_path: Path to the labeled data file
@@ -305,17 +313,17 @@ def run_pipeline(
         n_estimators: Number of base estimators for Isolation Forest
         contamination: Expected proportion of outliers in the data
         batch_size: Batch size for BERT feature extraction
-        threshold: Custom threshold for anomaly detection
+        threshold: Custom threshold for similarity detection
         extract_dir: Directory to extract zip files
         sample_size: Number of contracts to sample
         department_filter: Filter to only include files from a specific department
         save_model: Whether to save the trained model
 
     Returns:
-        DataFrame with anomaly predictions
+        DataFrame with similarity predictions
     """
     # Initialize pipeline
-    pipeline = ContractAnomalyPipeline(
+    pipeline = ContractSimilarityPipeline(
         bert_model_name=bert_model_name,
         n_estimators=n_estimators,
         contamination=contamination,
@@ -329,7 +337,7 @@ def run_pipeline(
         model_dir = os.path.join(output_dir, "model")
         pipeline.save_pipeline(model_dir)
 
-    # Predict anomalies
+    # Predict similarities
     result_df = pipeline.predict(
         unlabeled_data_paths,
         output_dir=output_dir,

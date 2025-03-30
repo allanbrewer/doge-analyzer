@@ -115,6 +115,14 @@ def load_unlabeled_data_from_file(
             return pd.DataFrame()
     elif file_path.lower().endswith(".csv"):
         csv_files = [file_path]
+    elif file_path.lower().endswith(".json"):
+        try:
+            df = load_json_data(file_path)
+            logger.info(f"Loaded unlabeled data from JSON file: {file_path}")
+            return df
+        except Exception as e:
+            logger.error(f"Error loading JSON file {file_path}: {e}")
+            return pd.DataFrame()
     else:
         logger.warning(f"Unsupported file type: {file_path}. Skipping.")
         return pd.DataFrame()
@@ -238,3 +246,34 @@ def load_multiple_unlabeled_files(
     )
 
     return combined_df
+
+
+def load_json_data(file_path: str) -> pd.DataFrame:
+    """
+    Load data from a JSON file.
+
+    Args:
+        file_path: Path to the JSON file
+
+    Returns:
+        DataFrame containing the data
+    """
+    try:
+        with open(file_path, "r") as f:
+            data = json.load(f)
+
+        # Extract the data from the JSON structure
+        if "data" in data:
+            contracts = data["data"]
+        else:
+            contracts = data
+
+        # Convert to DataFrame
+        df = pd.DataFrame(contracts)
+
+        logger.info(f"Loaded {len(df)} contracts from {file_path}")
+
+        return df
+    except Exception as e:
+        logger.error(f"Error loading data from {file_path}: {e}")
+        raise

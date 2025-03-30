@@ -1,5 +1,5 @@
 """
-Main script for running the contract anomaly detection pipeline.
+Main script for running the contract similarity detection pipeline.
 """
 
 import os
@@ -11,12 +11,14 @@ import matplotlib.pyplot as plt
 
 from doge_analyzer.inference.pipeline import run_pipeline
 from doge_analyzer.utils.visualization import (
-    plot_anomaly_distribution,
-    plot_top_anomalies,
-    plot_agency_anomaly_counts,
-    plot_value_vs_anomaly_score,
+    plot_similarity_distribution,
+    plot_top_similarities,
+    plot_agency_similarity_counts,
+    plot_value_vs_similarity_score,
 )
-from doge_analyzer.inference.pipeline import ContractAnomalyPipeline  # Import the class
+from doge_analyzer.inference.pipeline import (
+    ContractSimilarityPipeline,
+)  # Import the class
 
 # Initialize logging
 logging.basicConfig(
@@ -27,7 +29,9 @@ logger = logging.getLogger(__name__)
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Contract Anomaly Detection Pipeline")
+    parser = argparse.ArgumentParser(
+        description="Contract Similarity Detection Pipeline"
+    )
 
     # Required arguments
     parser.add_argument(
@@ -78,7 +82,7 @@ def parse_args():
         "--threshold",
         type=float,
         default=None,
-        help="Custom threshold for anomaly detection",
+        help="Custom threshold for similarity detection",
     )
     parser.add_argument(
         "--extract_dir",
@@ -129,12 +133,12 @@ def main():
     if args.load_model_dir:
         # Load pre-trained pipeline
         logger.info(f"Loading pre-trained pipeline from {args.load_model_dir}")
-        pipeline = ContractAnomalyPipeline.load_pipeline(
+        pipeline = ContractSimilarityPipeline.load_pipeline(
             args.load_model_dir,
             labeled_data_path=args.labeled_data,  # Still need labeled data path for feature fusion fitting
             bert_model_name=args.bert_model,
         )
-        # Predict anomalies using the loaded pipeline
+        # Predict similarities using the loaded pipeline
         result_df = pipeline.predict(
             unlabeled_data_paths=args.unlabeled_data,
             output_dir=args.output_dir,
@@ -169,21 +173,21 @@ def main():
         viz_dir = os.path.join(args.output_dir, "visualizations")
         os.makedirs(viz_dir, exist_ok=True)
 
-        # Plot anomaly distribution
-        plot_anomaly_distribution(result_df, threshold=args.threshold)
-        plt.savefig(os.path.join(viz_dir, "anomaly_distribution.png"))
+        # Plot similarity distribution
+        plot_similarity_distribution(result_df, threshold=args.threshold)
+        plt.savefig(os.path.join(viz_dir, "similarity_distribution.png"))
 
-        # Plot top anomalies
-        plot_top_anomalies(result_df)
-        plt.savefig(os.path.join(viz_dir, "top_anomalies.png"))
+        # Plot top similarities
+        plot_top_similarities(result_df)
+        plt.savefig(os.path.join(viz_dir, "top_similarities.png"))
 
-        # Plot agency anomaly counts
-        plot_agency_anomaly_counts(result_df)
-        plt.savefig(os.path.join(viz_dir, "agency_anomaly_counts.png"))
+        # Plot agency similarity counts
+        plot_agency_similarity_counts(result_df)
+        plt.savefig(os.path.join(viz_dir, "agency_similarity_counts.png"))
 
-        # Plot value vs anomaly score
-        plot_value_vs_anomaly_score(result_df)
-        plt.savefig(os.path.join(viz_dir, "value_vs_anomaly_score.png"))
+        # Plot value vs similarity score
+        plot_value_vs_similarity_score(result_df)
+        plt.savefig(os.path.join(viz_dir, "value_vs_similarity_score.png"))
 
         logger.info(f"Visualizations saved to {viz_dir}")
 

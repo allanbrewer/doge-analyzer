@@ -1,6 +1,6 @@
 """
-Isolation Forest model for anomaly detection.
-This module implements an Isolation Forest model for detecting anomalous contracts.
+Isolation Forest model for similarity detection.
+This module implements an Isolation Forest model for detecting similar contracts.
 """
 
 import numpy as np
@@ -20,9 +20,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class ContractAnomalyDetector:
+class ContractSimilarityDetector:
     """
-    Anomaly detection model for government contracts using Isolation Forest.
+    Similarity detection model for government contracts using Isolation Forest.
     """
 
     def __init__(
@@ -33,7 +33,7 @@ class ContractAnomalyDetector:
         random_state: int = 42,
     ):
         """
-        Initialize the anomaly detection model.
+        Initialize the similarity detection model.
 
         Args:
             n_estimators: Number of base estimators in the ensemble
@@ -53,7 +53,7 @@ class ContractAnomalyDetector:
 
     def fit(self, X: np.ndarray) -> None:
         """
-        Fit the anomaly detection model.
+        Fit the similarity detection model.
 
         Args:
             X: Training data with shape (n_samples, n_features)
@@ -66,38 +66,38 @@ class ContractAnomalyDetector:
         scores = self.model.decision_function(X)
 
         # Set threshold to the 10th percentile of scores
-        # This means we expect about 10% of contracts to be anomalous
+        # This means we expect about 10% of contracts to be similar
         self.threshold = np.percentile(scores, 10)
 
         logger.info(f"Model fitted. Threshold set to {self.threshold}")
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """
-        Predict anomaly labels (1: normal, -1: anomalous).
+        Predict similarity labels (1: normal, -1: similar).
 
         Args:
             X: Data with shape (n_samples, n_features)
 
         Returns:
-            Array of predictions (1: normal, -1: anomalous)
+            Array of predictions (1: normal, -1: similar)
         """
         if not self.fitted:
             logger.error("Model not fitted. Call fit() first.")
             return np.ones(X.shape[0])  # Default to normal
 
-        logger.info(f"Predicting anomalies for data with shape {X.shape}")
+        logger.info(f"Predicting similarities for data with shape {X.shape}")
         return self.model.predict(X)
 
     def decision_function(self, X: np.ndarray) -> np.ndarray:
         """
-        Get anomaly scores for data points.
-        Lower scores indicate more anomalous points.
+        Get similarity scores for data points.
+        Lower scores indicate more similar points.
 
         Args:
             X: Data with shape (n_samples, n_features)
 
         Returns:
-            Array of anomaly scores
+            Array of similarity scores
         """
         if not self.fitted:
             logger.error("Model not fitted. Call fit() first.")
@@ -109,20 +109,20 @@ class ContractAnomalyDetector:
         self, X: np.ndarray, threshold: Optional[float] = None
     ) -> np.ndarray:
         """
-        Predict anomaly labels using a custom threshold.
+        Predict similarity labels using a custom threshold.
 
         Args:
             X: Data with shape (n_samples, n_features)
             threshold: Custom threshold (if None, use the threshold set during fitting)
 
         Returns:
-            Array of predictions (1: normal, -1: anomalous)
+            Array of predictions (1: normal, -1: similar)
         """
         if not self.fitted:
             logger.error("Model not fitted. Call fit() first.")
             return np.ones(X.shape[0])  # Default to normal
 
-        # Get anomaly scores
+        # Get similarity scores
         scores = self.decision_function(X)
 
         # Use custom threshold or the one set during fitting
@@ -154,7 +154,7 @@ class ContractAnomalyDetector:
         logger.info(f"Model saved to {filepath}")
 
     @classmethod
-    def load_model(cls, filepath: str) -> "ContractAnomalyDetector":
+    def load_model(cls, filepath: str) -> "ContractSimilarityDetector":
         """
         Load a model from a file.
 
@@ -162,7 +162,7 @@ class ContractAnomalyDetector:
             filepath: Path to the saved model
 
         Returns:
-            Loaded ContractAnomalyDetector instance
+            Loaded ContractSimilarityDetector instance
         """
         model_data = joblib.load(filepath)
 
@@ -182,7 +182,7 @@ class ContractAnomalyDetector:
 
         Args:
             X: Data with shape (n_samples, n_features)
-            y_true: True labels (1: normal, -1: anomalous)
+            y_true: True labels (1: normal, -1: similar)
             threshold: Custom threshold (if None, use the threshold set during fitting)
 
         Returns:
@@ -209,22 +209,22 @@ class ContractAnomalyDetector:
         logger.info(f"Model evaluation: {metrics}")
         return metrics
 
-    def plot_anomaly_scores(
+    def plot_similarity_scores(
         self, X: np.ndarray, df: pd.DataFrame, top_n: int = 20
     ) -> None:
         """
-        Plot anomaly scores for the most anomalous contracts.
+        Plot similarity scores for the most similar contracts.
 
         Args:
             X: Data with shape (n_samples, n_features)
             df: DataFrame containing contract data
-            top_n: Number of top anomalous contracts to plot
+            top_n: Number of top similar contracts to plot
         """
         if not self.fitted:
             logger.error("Model not fitted. Call fit() first.")
             return
 
-        # Get anomaly scores
+        # Get similarity scores
         scores = self.decision_function(X)
 
         # Create DataFrame with scores
@@ -235,30 +235,30 @@ class ContractAnomalyDetector:
             }
         )
 
-        # Sort by score (ascending, as lower scores are more anomalous)
+        # Sort by score (ascending, as lower scores are more similar)
         score_df = score_df.sort_values("score").reset_index(drop=True)
 
-        # Get top N anomalous contracts
-        top_anomalies = score_df.head(top_n)
+        # Get top N similar contracts
+        top_similarities = score_df.head(top_n)
 
         # Create plot
         plt.figure(figsize=(12, 8))
 
         # Plot scores
-        ax = sns.barplot(x="index", y="score", data=top_anomalies)
+        ax = sns.barplot(x="index", y="score", data=top_similarities)
 
         # Add threshold line
         if self.threshold is not None:
             plt.axhline(y=self.threshold, color="r", linestyle="--", label="Threshold")
 
         # Add labels
-        plt.title(f"Top {top_n} Anomalous Contracts")
+        plt.title(f"Top {top_n} Similar Contracts")
         plt.xlabel("Contract Index")
-        plt.ylabel("Anomaly Score (lower is more anomalous)")
+        plt.ylabel("Similarity Score (lower is more similar)")
 
         # Add contract details as annotations
         if "description" in df.columns and "value" in df.columns:
-            for i, row in top_anomalies.iterrows():
+            for i, row in top_similarities.iterrows():
                 contract_idx = row["index"]
                 contract_desc = df.iloc[contract_idx]["description"]
                 contract_value = df.iloc[contract_idx]["value"]

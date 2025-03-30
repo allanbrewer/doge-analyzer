@@ -1,1 +1,1 @@
-# Models module for anomaly detection
+# Models module for similarity detection

@@ -1,5 +1,5 @@
 """
-DOGE Contract Anomaly Detector
+DOGE Contract Similarity Detector
 
 A machine learning system for identifying government contracts that should be reviewed
 for potential cancelation using an Isolation Forest model with BERT-processed text features.

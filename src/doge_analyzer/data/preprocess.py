@@ -123,6 +123,9 @@ def preprocess_labeled_data(df: pd.DataFrame) -> pd.DataFrame:
             axis=1,
         )
 
+    # Add is_canceled column (True for all labeled data)
+    processed_df["is_canceled"] = True
+
     logger.info(f"Preprocessed {len(processed_df)} labeled contracts")
 
     return processed_df
