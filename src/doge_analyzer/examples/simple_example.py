@@ -128,7 +128,7 @@ def run_example():
     top_5 = result_df.sort_values("anomaly_score", ascending=False).head(5)
     for i, row in top_5.iterrows():
         logger.info(
-            f"  Rank {i+1}: Score={row['anomaly_score']:.4f} - ID={row['contract_id']} - Value=${row.get('normalized_value', 'N/A'):,.2f} - Agency={row.get('agency', 'N/A')}"
+            f"  Rank {i+1}: Score={row['anomaly_score']:.4f} - ID={row['piid']} - Agency={row.get('agency', 'N/A')} - Value=${row.get('normalized_value', 'N/A'):,.2f}"
         )
 
     logger.info("Example completed successfully")
