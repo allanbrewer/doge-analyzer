@@ -1,5 +1,6 @@
 """
-Main script for running the contract similarity detection pipeline.
+Main script for running the contract anomaly detection pipeline.
+Identifies active contracts similar to a baseline set (e.g., canceled contracts).
 """
 
 import os
@@ -9,16 +10,16 @@ from typing import Dict, List, Optional, Tuple, Union
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from doge_analyzer.inference.pipeline import run_pipeline
+# Import the main execution function and the pipeline class
+from doge_analyzer.inference.pipeline import run_pipeline, ContractAnomalyPipeline
 from doge_analyzer.utils.visualization import (
-    plot_similarity_distribution,
-    plot_top_similarities,
-    plot_agency_similarity_counts,
-    plot_value_vs_similarity_score,
+    plot_anomaly_distribution,  # Renamed function
+    plot_top_anomalies,  # Renamed function
+    plot_agency_anomaly_counts,  # Renamed function
+    plot_value_vs_anomaly_score,  # Renamed function
 )
-from doge_analyzer.inference.pipeline import (
-    ContractSimilarityPipeline,
-)  # Import the class
+
+# Removed duplicate import, now handled above
 
 # Initialize logging
 logging.basicConfig(
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Contract Similarity Detection Pipeline"
+        description="Contract Anomaly Detection Pipeline (Flags contracts similar to training data)"
     )
 
     # Required arguments
@@ -38,13 +39,13 @@ def parse_args():
         "--labeled_data",
         type=str,
         required=True,
-        help="Path to the labeled data file (JSON)",
+        help="Path to the labeled data file (JSON, e.g., canceled contracts for training)",
     )
     parser.add_argument(
         "--unlabeled_data",
         type=str,
         required=True,
-        help="Path to the unlabeled data directory or file (ZIP or CSV)",
+        help="Path to the unlabeled data directory or file (ZIP or CSV, e.g., active contracts)",
     )
     parser.add_argument(
         "--output_dir",
@@ -69,8 +70,8 @@ def parse_args():
     parser.add_argument(
         "--contamination",
         type=float,
-        default=0.1,
-        help="Expected proportion of outliers in the data",
+        default=0.1,  # Note: This affects model.predict(), not predict_with_threshold()
+        help="Expected proportion of anomalies (used by Isolation Forest internal prediction)",
     )
     parser.add_argument(
         "--batch_size",
@@ -82,7 +83,7 @@ def parse_args():
         "--threshold",
         type=float,
         default=None,
-        help="Custom threshold for similarity detection",
+        help="Custom threshold for anomaly detection (overrides model's fitted threshold; higher values flag more similar contracts)",
     )
     parser.add_argument(
         "--extract_dir",
@@ -132,13 +133,13 @@ def main():
 
     if args.load_model_dir:
         # Load pre-trained pipeline
-        logger.info(f"Loading pre-trained pipeline from {args.load_model_dir}")
-        pipeline = ContractSimilarityPipeline.load_pipeline(
+        logger.info(f"Loading pre-trained anomaly pipeline from {args.load_model_dir}")
+        # Note: labeled_data_path is not needed for loading the pipeline itself anymore
+        pipeline = ContractAnomalyPipeline.load_pipeline(
             args.load_model_dir,
-            labeled_data_path=args.labeled_data,  # Still need labeled data path for feature fusion fitting
             bert_model_name=args.bert_model,
         )
-        # Predict similarities using the loaded pipeline
+        # Predict anomalies using the loaded pipeline
         result_df = pipeline.predict(
             unlabeled_data_paths=args.unlabeled_data,
             output_dir=args.output_dir,
@@ -173,21 +174,28 @@ def main():
         viz_dir = os.path.join(args.output_dir, "visualizations")
         os.makedirs(viz_dir, exist_ok=True)
 
-        # Plot similarity distribution
-        plot_similarity_distribution(result_df, threshold=args.threshold)
-        plt.savefig(os.path.join(viz_dir, "similarity_distribution.png"))
+        # Plot anomaly score distribution
+        plot_anomaly_distribution(
+            result_df,
+            threshold=(
+                pipeline.anomaly_detector.threshold
+                if args.threshold is None
+                else args.threshold
+            ),
+        )
+        plt.savefig(os.path.join(viz_dir, "anomaly_distribution.png"))
 
-        # Plot top similarities
-        plot_top_similarities(result_df)
-        plt.savefig(os.path.join(viz_dir, "top_similarities.png"))
+        # Plot top anomalies (most similar)
+        plot_top_anomalies(result_df)
+        plt.savefig(os.path.join(viz_dir, "top_anomalies.png"))
 
-        # Plot agency similarity counts
-        plot_agency_similarity_counts(result_df)
-        plt.savefig(os.path.join(viz_dir, "agency_similarity_counts.png"))
+        # Plot agency anomaly counts
+        plot_agency_anomaly_counts(result_df)
+        plt.savefig(os.path.join(viz_dir, "agency_anomaly_counts.png"))
 
-        # Plot value vs similarity score
-        plot_value_vs_similarity_score(result_df)
-        plt.savefig(os.path.join(viz_dir, "value_vs_similarity_score.png"))
+        # Plot value vs anomaly score
+        plot_value_vs_anomaly_score(result_df)
+        plt.savefig(os.path.join(viz_dir, "value_vs_anomaly_score.png"))
 
         logger.info(f"Visualizations saved to {viz_dir}")
 

@@ -1,1 +1,1 @@
-# Examples module for contract similarity detection
+# Examples module for contract anomaly detection
