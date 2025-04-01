@@ -29,7 +29,7 @@ def run_example():
     labeled_data_path = os.path.join(
         "data", "contracts", "doge_contracts_20250323222302.json"
     )
-    unlabeled_data_path = os.path.join("data", "unlabeled")
+    unlabeled_data_path = os.path.join("data", "unlabeled", "contracts")
     output_dir = "results/example"
 
     # Create unlabeled data directory if it doesn't exist (for example purposes)
