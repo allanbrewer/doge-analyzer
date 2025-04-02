@@ -21,10 +21,8 @@ logger = logging.getLogger(__name__)
 def load_labeled_data(file_path: str) -> pd.DataFrame:
     """
     Load labeled data (canceled contracts) from a JSON file.
-
     Args:
         file_path: Path to the JSON file containing labeled data
-
     Returns:
         DataFrame containing the labeled data
     """
@@ -71,11 +69,9 @@ def extract_csv_from_zip(
 ) -> List[str]:
     """
     Extract CSV files from a zip file.
-
     Args:
         zip_file_path: Path to the zip file
         output_dir: Directory to extract files to (defaults to same directory as zip)
-
     Returns:
         List of paths to extracted CSV files
     """
@@ -113,12 +109,10 @@ def load_unlabeled_data_from_file(
 ) -> pd.DataFrame:
     """
     Load unlabeled data from a single file (ZIP or CSV).
-
     Args:
         file_path: Path to the file (ZIP or CSV)
         extract_dir: Directory to extract files to (if ZIP)
         sample_size: Number of contracts to sample (if None, load all)
-
     Returns:
         DataFrame containing the unlabeled data
     """
@@ -182,13 +176,11 @@ def load_multiple_unlabeled_files(
 ) -> pd.DataFrame:
     """
     Load unlabeled data from multiple files or a directory.
-
     Args:
         input_paths: Path to a directory, a single file, or a list of file paths
         extract_dir: Directory to extract zip files to
         sample_size: Total number of contracts to sample across all files
         department_filter: Filter to only include files from a specific department
-
     Returns:
         DataFrame containing the combined unlabeled data
     """
@@ -268,10 +260,8 @@ def load_multiple_unlabeled_files(
 def load_json_data(file_path: str) -> pd.DataFrame:
     """
     Load data from a JSON file.
-
     Args:
         file_path: Path to the JSON file
-
     Returns:
         DataFrame containing the data
     """

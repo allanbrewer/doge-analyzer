@@ -12,7 +12,6 @@ import logging
 from typing import Dict, List, Optional, Tuple, Union
 from joblib import dump, load
 
-# Initialize logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -24,12 +23,9 @@ class FeatureFusion:
     Feature fusion class for combining different types of features.
     """
 
-    def __init__(
-        self, top_category_percentage: float = 0.2
-    ):  # Added percentage parameter
+    def __init__(self, top_category_percentage: float = 0.2):
         """
         Initialize the feature fusion class.
-
         Args:
             top_category_percentage (float): Percentage of top categories (agencies, vendors) to keep.
                                              Defaults to 0.2 (20%).
@@ -55,10 +51,8 @@ class FeatureFusion:
     def extract_numerical_features(self, df: pd.DataFrame) -> np.ndarray:
         """
         Extract numerical features from a DataFrame.
-
         Args:
             df: DataFrame containing contract data
-
         Returns:
             Array of numerical features
         """
@@ -90,8 +84,6 @@ class FeatureFusion:
         # Replace multiple spaces with single space and strip
         name = re.sub(r"\s+", " ", name).strip()
         return name if name else "Unknown"  # Return "Unknown" if empty after cleaning
-
-    # ... (keep extract_numerical_features)
 
     def extract_categorical_features(
         self, df: pd.DataFrame
@@ -215,7 +207,6 @@ class FeatureFusion:
         logger.info("FeatureFusion fitting complete.")
 
     def transform(self, df: pd.DataFrame, text_features: np.ndarray) -> np.ndarray:
-        # ... (keep docstring)
         if not self.fitted:
             # Raise error instead of warning, transform requires fitting.
             raise RuntimeError("Feature fusion model not fitted. Call fit() first.")
@@ -359,11 +350,9 @@ class FeatureFusion:
     def fit_transform(self, df: pd.DataFrame, text_features: np.ndarray) -> np.ndarray:
         """
         Fit the feature fusion model and transform the data.
-
         Args:
             df: DataFrame containing data
             text_features: BERT text features
-
         Returns:
             Combined feature array
         """
@@ -371,7 +360,6 @@ class FeatureFusion:
         return self.transform(df, text_features)
 
     def save_model(self, output_dir: str) -> None:
-        # ... (keep docstring and os.makedirs)
         os.makedirs(output_dir, exist_ok=True)
         logger.info(f"Saving FeatureFusion model components to {output_dir}")
 
