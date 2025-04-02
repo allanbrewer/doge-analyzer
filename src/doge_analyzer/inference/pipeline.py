@@ -12,11 +12,8 @@ from typing import Dict, List, Optional, Tuple, Union
 import glob
 from tqdm import tqdm
 from joblib import dump, load
-import matplotlib.pyplot as plt  # Added
-import seaborn as sns  # Added
-from sklearn.decomposition import PCA  # Added
-from sklearn.manifold import TSNE  # Added
-from sklearn.ensemble import RandomForestClassifier  # Added
+
+# Removed plt, sns, PCA, TSNE, RandomForestClassifier imports as they are now in separate modules
 
 from doge_analyzer.data.load import load_labeled_data, load_multiple_unlabeled_files
 from doge_analyzer.data.preprocess import (
@@ -27,6 +24,17 @@ from doge_analyzer.data.preprocess import (
 from doge_analyzer.features.text import BertFeatureExtractor
 from doge_analyzer.features.fusion import FeatureFusion
 from doge_analyzer.models.isolation_forest import ContractAnomalyDetector
+
+# Added imports for new modules
+from doge_analyzer.analysis.feature_analysis import (
+    run_pca_analysis,
+    run_correlation_analysis,
+)
+from doge_analyzer.evaluation.model_evaluation import (
+    plot_pca_scatter_anomaly_scores,
+    plot_threshold_analysis,
+    run_shap_analysis,  # Added run_shap_analysis
+)
 
 # Initialize logging
 logging.basicConfig(
@@ -74,10 +82,11 @@ class ContractAnomalyPipeline:
         self,
         labeled_data_path: str,
         batch_size: int = 8,
-        output_dir: Optional[str] = None,  # Added output_dir for plots
+        output_dir: Optional[str] = None,  # Keep output_dir for plots
     ) -> None:
         """
-        Fit the pipeline on labeled data, including feature analysis and evaluation plots.
+        Fit the pipeline on labeled data. Optionally performs analysis on text features
+        and evaluation plotting if output_dir is provided.
 
         Args:
             labeled_data_path: Path to the labeled data file
@@ -104,19 +113,46 @@ class ContractAnomalyPipeline:
             processed_labeled_df, "clean_description", batch_size
         )
 
+        # --- Text Feature Analysis (Optional) ---
+        if output_dir and text_features.shape[0] > 0 and text_features.shape[1] > 0:
+            analysis_output_dir = os.path.join(output_dir, "analysis")
+            logger.info(
+                f"--- Running Text Feature Analysis (Saving to {analysis_output_dir}) ---"
+            )
+            # Generate generic names for text features for correlation plot
+            num_text_dims = text_features.shape[1]
+            text_feature_names = [f"text_{i}" for i in range(num_text_dims)]
+
+            run_pca_analysis(
+                features=text_features,
+                output_dir=analysis_output_dir,
+                random_state=self.random_state,
+                prefix="text_embedding",
+            )
+            run_correlation_analysis(
+                features=text_features,
+                feature_names=text_feature_names,
+                output_dir=analysis_output_dir,
+                prefix="text_embedding",
+            )
+            logger.info("--- Text Feature Analysis Complete ---")
+        elif output_dir:
+            logger.warning(
+                "Skipping text feature analysis due to empty or invalid text features."
+            )
+
         # --- Feature Fusion ---
         logger.info("Initializing and fitting feature fusion")
         self.feature_fusion = FeatureFusion()
         self.feature_fusion.fit(processed_labeled_df)
 
         logger.info("Combining features")
-        # Assuming 'is_canceled' is the label column if present, otherwise use all columns
         cols_to_drop = (
             ["is_canceled"] if "is_canceled" in processed_labeled_df.columns else []
         )
         X_df = processed_labeled_df.drop(columns=cols_to_drop, errors="ignore")
 
-        # Get combined features and feature names
+        # Get combined features AND feature names (needed for SHAP later)
         combined_features, feature_names = self.feature_fusion.transform(
             X_df, text_features
         )
@@ -124,276 +160,55 @@ class ContractAnomalyPipeline:
         if combined_features.shape[0] == 0 or combined_features.shape[1] == 0:
             logger.error("Combined features are empty. Cannot proceed with fitting.")
             return
-        logger.info(f"Combined features shape: {combined_features.shape}")
-        logger.info(f"Number of feature names: {len(feature_names)}")
+        logger.info(f"Combined features shape for fitting: {combined_features.shape}")
+        logger.info(
+            f"Number of feature names: {len(feature_names)}"
+        )  # Log feature name count
 
-        # Create analysis output directory if output_dir is provided
-        analysis_output_dir = None
-        if output_dir:
-            analysis_output_dir = os.path.join(output_dir, "analysis")
-            os.makedirs(analysis_output_dir, exist_ok=True)
-            logger.info(f"Saving analysis plots to: {analysis_output_dir}")
-
-        # --- 1. Feature Space Analysis (Before Fitting Model) ---
-        logger.info("--- Starting Feature Space Analysis ---")
-
-        # Ensure we have enough samples for analysis
-        if combined_features.shape[0] < 2:
-            logger.warning("Not enough samples for feature space analysis. Skipping.")
-        else:
-            # --- PCA ---
-            logger.info("Running PCA analysis...")
-            try:
-                pca = PCA(random_state=self.random_state)
-                pca.fit(combined_features)
-                cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
-                n_components_95 = np.argmax(cumulative_variance >= 0.95) + 1
-                logger.info(
-                    f"PCA: {n_components_95} components explain >= 95% variance."
-                )
-
-                if analysis_output_dir:
-                    plt.figure(figsize=(10, 6))
-                    plt.plot(
-                        range(1, len(cumulative_variance) + 1),
-                        cumulative_variance,
-                        marker="o",
-                        linestyle="--",
-                    )
-                    plt.axhline(y=0.95, color="r", linestyle=":", label="95% Threshold")
-                    plt.axvline(
-                        x=n_components_95,
-                        color="g",
-                        linestyle=":",
-                        label=f"{n_components_95} Components",
-                    )
-                    plt.title("PCA Cumulative Explained Variance")
-                    plt.xlabel("Number of Components")
-                    plt.ylabel("Cumulative Explained Variance Ratio")
-                    plt.legend()
-                    plt.grid(True)
-                    pca_plot_path = os.path.join(
-                        analysis_output_dir, "pca_explained_variance.png"
-                    )
-                    plt.savefig(pca_plot_path)
-                    plt.close()
-                    logger.info(f"PCA variance plot saved to {pca_plot_path}")
-            except Exception as e:
-                logger.error(f"PCA analysis failed: {e}", exc_info=True)
-
-            # --- Feature Importance (Proxy using RandomForest) ---
-            logger.info("Calculating feature importance proxy using RandomForest...")
-            try:
-                # Create dummy labels (all ones, as it's unsupervised)
-                dummy_y = np.ones(combined_features.shape[0])
-                rf = RandomForestClassifier(
-                    n_estimators=100,
-                    random_state=self.random_state,
-                    n_jobs=-1,
-                    max_depth=10,
-                )  # Limit depth for speed
-                rf.fit(combined_features, dummy_y)
-                importances = rf.feature_importances_
-
-                importance_df = pd.DataFrame(
-                    {"feature": feature_names, "importance": importances}
-                )
-                importance_df = importance_df.sort_values(
-                    "importance", ascending=False
-                ).reset_index(drop=True)
-
-                # Identify low importance features (threshold might need tuning)
-                low_importance_threshold = 0.001  # Example threshold
-                low_importance_features = importance_df[
-                    importance_df["importance"] < low_importance_threshold
-                ]["feature"].tolist()
-                logger.info(
-                    f"Found {len(low_importance_features)} features with importance < {low_importance_threshold} (proxy)."
-                )
-                # logger.debug(f"Low importance features (proxy): {low_importance_features}") # Potentially very long list
-
-                if analysis_output_dir:
-                    # Plot top N features
-                    n_top_features = min(30, len(importance_df))
-                    plt.figure(figsize=(12, 8))
-                    sns.barplot(
-                        x="importance",
-                        y="feature",
-                        data=importance_df.head(n_top_features),
-                    )
-                    plt.title(
-                        f"Top {n_top_features} Feature Importances (RandomForest Proxy)"
-                    )
-                    plt.tight_layout()
-                    importance_plot_path = os.path.join(
-                        analysis_output_dir, "feature_importance_proxy.png"
-                    )
-                    plt.savefig(importance_plot_path)
-                    plt.close()
-                    logger.info(
-                        f"Feature importance plot saved to {importance_plot_path}"
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Feature importance proxy calculation failed: {e}", exc_info=True
-                )
-
-            # --- Correlation Analysis ---
-            logger.info("Running correlation analysis...")
-            try:
-                # Create DataFrame for correlation calculation
-                features_df = pd.DataFrame(combined_features, columns=feature_names)
-                correlation_matrix = features_df.corr()
-
-                # Identify highly correlated pairs
-                high_corr_threshold = 0.9  # Example threshold
-                upper_tri = correlation_matrix.where(
-                    np.triu(np.ones(correlation_matrix.shape), k=1).astype(bool)
-                )
-                high_corr_pairs = [
-                    (column, upper_tri.index[row_idx])
-                    for row_idx, column in enumerate(upper_tri.columns)
-                    if any(abs(upper_tri[column]) > high_corr_threshold)
-                    for val in upper_tri[column]
-                    if abs(val) > high_corr_threshold  # Find specific pairs
-                ]
-                # More precise way to get pairs
-                high_corr_pairs_precise = []
-                for i in range(len(upper_tri.columns)):
-                    for j in range(i):
-                        if abs(upper_tri.iloc[j, i]) > high_corr_threshold:
-                            high_corr_pairs_precise.append(
-                                (upper_tri.columns[i], upper_tri.index[j])
-                            )
-
-                logger.info(
-                    f"Found {len(high_corr_pairs_precise)} feature pairs with absolute correlation > {high_corr_threshold}."
-                )
-                # logger.debug(f"Highly correlated pairs (> {high_corr_threshold}): {high_corr_pairs_precise}") # Potentially long
-
-                if analysis_output_dir:
-                    plt.figure(figsize=(12, 10))
-                    sns.heatmap(
-                        correlation_matrix, cmap="coolwarm", center=0, annot=False
-                    )  # Annot=False for large matrices
-                    plt.title("Feature Correlation Matrix")
-                    plt.tight_layout()
-                    corr_plot_path = os.path.join(
-                        analysis_output_dir, "correlation_heatmap.png"
-                    )
-                    plt.savefig(corr_plot_path)
-                    plt.close()
-                    logger.info(f"Correlation heatmap saved to {corr_plot_path}")
-            except Exception as e:
-                logger.error(f"Correlation analysis failed: {e}", exc_info=True)
-
-        logger.info("--- Feature Space Analysis Complete ---")
-        # --- Decision: For now, we log the analysis but don't modify combined_features ---
-        # Based on the logs and plots saved in analysis_output_dir, a user could decide
-        # whether to apply PCA or select features in a subsequent step.
-
-        # --- 2. Fit the Isolation Forest Model ---
+        # --- Fit the Isolation Forest Model ---
         logger.info("Initializing and fitting anomaly detector (Isolation Forest)")
         self.anomaly_detector = ContractAnomalyDetector(
             n_estimators=self.n_estimators,
             contamination=self.contamination,
             random_state=self.random_state,
         )
-        self.anomaly_detector.fit(
-            combined_features
-        )  # Fit on the original combined features
+        self.anomaly_detector.fit(combined_features)
 
-        # --- 3. Model Evaluation ---
-        logger.info("--- Starting Model Evaluation ---")
-        # Create evaluation output directory
-        evaluation_output_dir = None
+        # --- Model Evaluation (Optional) ---
         if output_dir:
             evaluation_output_dir = os.path.join(output_dir, "evaluation")
-            os.makedirs(evaluation_output_dir, exist_ok=True)
-            logger.info(f"Saving evaluation plots to: {evaluation_output_dir}")
+            logger.info(
+                f"--- Running Model Evaluation (Saving to {evaluation_output_dir}) ---"
+            )
+            # Get anomaly scores from the fitted model
+            anomaly_scores = self.anomaly_detector.decision_function(combined_features)
+            logger.info(
+                f"Anomaly scores range: [{np.min(anomaly_scores):.4f}, {np.max(anomaly_scores):.4f}]"
+            )
+            logger.info(f"Fitted threshold: {self.anomaly_detector.threshold:.4f}")
 
-        # Get anomaly scores from the fitted model
-        anomaly_scores = self.anomaly_detector.decision_function(combined_features)
-        min_score, max_score = np.min(anomaly_scores), np.max(anomaly_scores)
-        logger.info(f"Anomaly scores range: [{min_score:.4f}, {max_score:.4f}]")
-        logger.info(f"Fitted threshold: {self.anomaly_detector.threshold:.4f}")
-
-        # --- Visual Inspection with Dimensionality Reduction (PCA) ---
-        logger.info("Running PCA for 2D visualization...")
-        try:
-            if combined_features.shape[1] >= 2:  # Need at least 2 features for PCA 2D
-                pca_2d = PCA(n_components=2, random_state=self.random_state)
-                features_2d = pca_2d.fit_transform(combined_features)
-
-                if evaluation_output_dir:
-                    plt.figure(figsize=(10, 8))
-                    scatter = plt.scatter(
-                        features_2d[:, 0],
-                        features_2d[:, 1],
-                        c=anomaly_scores,
-                        cmap="viridis",
-                        alpha=0.7,
-                    )
-                    plt.colorbar(
-                        scatter,
-                        label="Anomaly Score (Higher = More Similar to Training)",
-                    )
-                    plt.title("2D PCA of Features Colored by Anomaly Score")
-                    plt.xlabel("Principal Component 1")
-                    plt.ylabel("Principal Component 2")
-                    plt.grid(True)
-                    pca_scatter_path = os.path.join(
-                        evaluation_output_dir, "pca_scatter_anomaly_scores.png"
-                    )
-                    plt.savefig(pca_scatter_path)
-                    plt.close()
-                    logger.info(f"PCA scatter plot saved to {pca_scatter_path}")
-            else:
-                logger.warning("Not enough features for 2D PCA visualization.")
-        except Exception as e:
-            logger.error(f"PCA visualization failed: {e}", exc_info=True)
-
-        # --- Threshold Analysis ---
-        logger.info("Running threshold analysis...")
-        try:
-            thresholds = np.linspace(min_score, max_score, 50)
-            flagged_counts = []
-            for thresh in thresholds:
-                # Count how many scores are ABOVE the threshold (anomalous = similar to training)
-                count = np.sum(anomaly_scores > thresh)
-                flagged_counts.append(count)
-
-            if evaluation_output_dir:
-                plt.figure(figsize=(10, 6))
-                plt.plot(thresholds, flagged_counts, marker=".")
-                plt.axvline(
-                    x=self.anomaly_detector.threshold,
-                    color="r",
-                    linestyle="--",
-                    label=f"Fitted Threshold ({self.anomaly_detector.threshold:.3f})",
-                )
-                plt.title(
-                    "Threshold Analysis: Number of Flagged Contracts vs. Anomaly Score Threshold"
-                )
-                plt.xlabel("Anomaly Score Threshold")
-                plt.ylabel("Number of Contracts Flagged (Score > Threshold)")
-                plt.legend()
-                plt.grid(True)
-                threshold_plot_path = os.path.join(
-                    evaluation_output_dir, "threshold_analysis.png"
-                )
-                plt.savefig(threshold_plot_path)
-                plt.close()
-                logger.info(f"Threshold analysis plot saved to {threshold_plot_path}")
-        except Exception as e:
-            logger.error(f"Threshold analysis failed: {e}", exc_info=True)
-
-        logger.info("--- Model Evaluation Complete ---")
+            plot_pca_scatter_anomaly_scores(
+                features=combined_features,
+                scores=anomaly_scores,
+                output_dir=evaluation_output_dir,
+                random_state=self.random_state,
+            )
+            plot_threshold_analysis(
+                scores=anomaly_scores,
+                fitted_threshold=self.anomaly_detector.threshold,
+                output_dir=evaluation_output_dir,
+            )
+            # Add SHAP analysis call
+            run_shap_analysis(
+                detector=self.anomaly_detector,
+                features=combined_features,
+                feature_names=feature_names,  # Pass feature names
+                output_dir=evaluation_output_dir,
+            )
+            logger.info("--- Model Evaluation Complete ---")
 
         self.fitted = True
-        logger.info(
-            "Pipeline fitting (including analysis and evaluation) completed successfully"
-        )
+        logger.info("Pipeline fitting completed successfully")
 
     def predict(
         self,
@@ -626,7 +441,7 @@ def run_pipeline(
     )
 
     # Fit pipeline
-    pipeline.fit(labeled_data_path, batch_size=batch_size)
+    pipeline.fit(labeled_data_path, batch_size=batch_size, output_dir=output_dir)
 
     # Save pipeline if requested
     if save_model:
