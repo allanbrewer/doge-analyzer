@@ -206,13 +206,32 @@ class FeatureFusion:
         self.fitted = True
         logger.info("FeatureFusion fitting complete.")
 
-    def transform(self, df: pd.DataFrame, text_features: np.ndarray) -> np.ndarray:
+    def transform(
+        self, df: pd.DataFrame, text_features: np.ndarray
+    ) -> Tuple[np.ndarray, List[str]]:  # Modified return type
         if not self.fitted:
-            # Raise error instead of warning, transform requires fitting.
             raise RuntimeError("Feature fusion model not fitted. Call fit() first.")
 
         logger.info("Transforming data using fitted FeatureFusion model...")
         df_processed = df.copy()
+        feature_names = []  # Initialize list for feature names
+
+        # --- Text Features ---
+        # Assuming text_features are BERT embeddings (e.g., 768 dimensions)
+        # Create generic names for text features
+        num_text_features = 0
+        processed_text_features = np.zeros((len(df_processed), 0))  # Default empty
+        if text_features.ndim == 1:
+            text_features = text_features.reshape(-1, 1)
+        if text_features.size > 0 and text_features.shape[0] == len(df_processed):
+            num_text_features = text_features.shape[1]
+            feature_names.extend([f"text_{i}" for i in range(num_text_features)])
+            processed_text_features = text_features
+            logger.debug(f"Adding {num_text_features} text features.")
+        elif text_features.size > 0:
+            logger.warning(
+                f"Text features shape {text_features.shape} mismatch with DataFrame length {len(df_processed)}. Skipping text features."
+            )
 
         # --- Numerical ---
         numerical_features = self.extract_numerical_features(df_processed)
@@ -222,15 +241,24 @@ class FeatureFusion:
                 scaled_numerical_features = self.numerical_scaler.transform(
                     numerical_features
                 )
+                # Add numerical feature names (use the ones defined in __init__)
+                available_numerical_columns = [
+                    col for col in self.numerical_columns if col in df_processed.columns
+                ]
+                feature_names.extend(
+                    [f"num_{col}" for col in available_numerical_columns]
+                )
                 logger.info(
                     f"Transformed numerical features shape: {scaled_numerical_features.shape}"
                 )
+                logger.debug(
+                    f"Added numerical feature names: {[f'num_{col}' for col in available_numerical_columns]}"
+                )
+
             except Exception as e:
                 logger.error(
                     f"Error transforming numerical features: {e}", exc_info=True
                 )
-                # Handle case where scaler might fail (e.g., unexpected data)
-                # Return zeros or raise, depending on desired robustness
                 raise
         else:
             logger.info("No numerical features to transform.")
@@ -238,114 +266,113 @@ class FeatureFusion:
         # --- Categorical ---
         categorical_df = self.extract_categorical_features(df_processed)
         categorical_features_encoded = np.zeros((len(df_processed), 0))  # Default empty
+        cat_feature_names = []
 
-        if not categorical_df.empty:
+        if not categorical_df.empty and hasattr(
+            self.categorical_encoder, "categories_"
+        ):  # Check if encoder is fitted
             logger.info(
                 "Standardizing and mapping categorical columns for transform..."
             )
             # Standardize names
             for col in categorical_df.columns:
-                # Ensure column is string type before applying string methods
                 categorical_df[col] = categorical_df[col].astype(str).fillna("Unknown")
                 categorical_df[col] = categorical_df[col].apply(self._standardize_name)
 
             # Map to 'Unknown' based on stored top lists
-            if "agency" in categorical_df.columns:
+            if "agency" in categorical_df.columns and self.top_agencies:
                 categorical_df["agency"] = categorical_df["agency"].apply(
                     lambda x: x if x in self.top_agencies else "Unknown"
                 )
-            if "vendor" in categorical_df.columns:
+            if "vendor" in categorical_df.columns and self.top_vendors:
                 categorical_df["vendor"] = categorical_df["vendor"].apply(
                     lambda x: x if x in self.top_vendors else "Unknown"
                 )
 
             # Encode using fitted encoder
-            # Fill any remaining NaNs created during processing just before encoding
             categorical_data_to_encode = categorical_df.fillna("Unknown").values
             if categorical_data_to_encode.shape[1] > 0:
                 try:
-                    # Use stored categories to ensure consistency if available
                     if self._encoder_categories is not None:
                         self.categorical_encoder.categories_ = self._encoder_categories
 
                     categorical_features_encoded = self.categorical_encoder.transform(
                         categorical_data_to_encode
                     )
+                    # Get feature names from the encoder
+                    cat_feature_names = list(
+                        self.categorical_encoder.get_feature_names_out(
+                            categorical_df.columns
+                        )
+                    )
+                    feature_names.extend(
+                        cat_feature_names
+                    )  # Add categorical feature names
                     logger.info(
                         f"Transformed categorical features shape: {categorical_features_encoded.shape}"
                     )
-                    # Log feature names after transform to verify consistency
-                    feature_names = self.categorical_encoder.get_feature_names_out(
-                        categorical_df.columns
-                    )
                     logger.debug(
-                        f"Encoder feature names out (transform): {feature_names}"
+                        f"Added categorical feature names: {cat_feature_names}"
                     )
 
                 except Exception as e:
                     logger.error(
                         f"Error transforming categorical features: {e}", exc_info=True
                     )
-                    # Handle potential errors during transform (e.g., unseen values if handle_unknown='error')
-                    raise  # Reraise the error for now
+                    raise
             else:
                 logger.info("No categorical features to transform.")
         else:
-            logger.info("No categorical columns found in DataFrame to transform.")
+            logger.info("No categorical columns found or encoder not fitted.")
 
         # --- Combine Features ---
         features_to_combine = []
-        # Ensure text_features is 2D
-        if text_features.ndim == 1:
-            text_features = text_features.reshape(-1, 1)
-        if text_features.size > 0 and text_features.shape[0] == len(df_processed):
-            features_to_combine.append(text_features)
-            logger.debug(f"Adding text features with shape: {text_features.shape}")
-        elif text_features.size > 0:
-            logger.warning(
-                f"Text features shape {text_features.shape} mismatch with DataFrame length {len(df_processed)}. Skipping text features."
-            )
-
+        if processed_text_features.shape[1] > 0:  # Use processed_text_features
+            features_to_combine.append(processed_text_features)
         if scaled_numerical_features.shape[1] > 0:
             features_to_combine.append(scaled_numerical_features)
-            logger.debug(
-                f"Adding numerical features with shape: {scaled_numerical_features.shape}"
-            )
-
         if categorical_features_encoded.shape[1] > 0:
             features_to_combine.append(categorical_features_encoded)
-            logger.debug(
-                f"Adding categorical features with shape: {categorical_features_encoded.shape}"
-            )
 
-        # Combine features horizontally
         if features_to_combine:
             try:
-                # Ensure all arrays have the same number of rows
                 num_rows = features_to_combine[0].shape[0]
                 if not all(arr.shape[0] == num_rows for arr in features_to_combine):
                     shapes = [arr.shape for arr in features_to_combine]
                     logger.error(
                         f"Cannot hstack features: arrays have inconsistent number of rows. Shapes: {shapes}"
                     )
-                    # Decide how to handle this: error, return empty, return partial?
-                    # For now, raise an error as it indicates a fundamental problem.
                     raise ValueError(
                         f"Inconsistent number of rows in features to combine. Shapes: {shapes}"
                     )
 
                 combined_features = np.hstack(features_to_combine)
                 logger.info(f"Combined features final shape: {combined_features.shape}")
+                # Verify feature name count matches combined feature columns
+                if len(feature_names) != combined_features.shape[1]:
+                    logger.error(
+                        f"Feature name count ({len(feature_names)}) does not match combined feature columns ({combined_features.shape[1]})!"
+                    )
+                    # Attempt to truncate or pad feature names? Or raise error? Raising error is safer.
+                    raise ValueError(
+                        "Mismatch between number of feature names and number of feature columns."
+                    )
+
             except ValueError as e:
-                logger.error(f"Error during hstack: {e}", exc_info=True)
-                # Handle potential hstack errors (e.g., empty arrays, dimension mismatch)
-                raise  # Reraise for now
+                logger.error(
+                    f"Error during hstack or feature name verification: {e}",
+                    exc_info=True,
+                )
+                raise
         else:
             logger.warning("No features available to combine.")
-            # Return an empty array with the correct number of rows if possible, or raise
             combined_features = np.zeros((len(df_processed), 0))
+            feature_names = (
+                []
+            )  # Ensure feature_names is empty if combined_features is empty
 
-        return combined_features
+        # Return both combined features and their names
+        return combined_features, feature_names  # Modified return value
 
     def fit_transform(self, df: pd.DataFrame, text_features: np.ndarray) -> np.ndarray:
         """
@@ -435,7 +462,9 @@ class FeatureFusion:
                     f"Inferred categorical columns from encoder: {feature_fusion.categorical_columns}"
                 )
             # Load the explicit categories saved during fit for robustness
-            categories_path = os.path.join(output_dir, "encoder_categories.joblib")
+            categories_path = os.path.join(
+                model_dir, "encoder_categories.joblib"
+            )  # Use model_dir, not output_dir
             if os.path.exists(categories_path):
                 feature_fusion._encoder_categories = load(categories_path)
                 logger.info(

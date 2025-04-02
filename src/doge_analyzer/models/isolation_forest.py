@@ -69,7 +69,7 @@ class ContractAnomalyDetector:
 
         # Set threshold to the 90th percentile of scores (higher scores indicate similarity to training data)
         # This flags the top 10% most similar contracts (relative to training data) as anomalous.
-        self.threshold = np.percentile(scores, 90)
+        self.threshold = np.percentile(scores, 75)
 
         logger.info(f"Model fitted. Threshold set to {self.threshold}")
 

@@ -27,7 +27,9 @@ def run_example():
     """Run a simple example of the pipeline."""
     # Set paths
     labeled_data_path = os.path.join(
-        "data", "contracts", "doge_contracts_20250323222302.json"
+        "data",
+        "contracts",
+        "doge_contracts_20250401170925.json",  # Use user-specified data file
     )
     unlabeled_data_path = os.path.join("data", "unlabeled", "contracts")
     output_dir = "results/example"
@@ -60,7 +62,9 @@ def run_example():
     else:
         # Fit pipeline on labeled data, including BERT text feature extraction
         logger.info("Fitting anomaly pipeline on labeled data with BERT features")
-        pipeline.fit(labeled_data_path, batch_size=8)
+        pipeline.fit(
+            labeled_data_path, batch_size=8, output_dir=output_dir
+        )  # Pass output_dir for plots
 
         # Save pipeline
         os.makedirs(model_dir, exist_ok=True)
@@ -75,7 +79,7 @@ def run_example():
         unlabeled_data_path,
         output_dir=output_dir,
         batch_size=8,
-        sample_size=100,  # Only process 100 contracts for this example
+        sample_size=1000,  # Only process 100 contracts for this example
     )
 
     # Generate visualizations
