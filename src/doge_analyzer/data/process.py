@@ -127,15 +127,20 @@ def preprocess_labeled_data(df: pd.DataFrame) -> pd.DataFrame:
     return processed_df
 
 
+from typing import Dict, List, Optional, Set, Tuple, Union
+
+
 def preprocess_unlabeled_data(
-    df: pd.DataFrame, labeled_columns: List[str]
+    df: pd.DataFrame, labeled_columns: List[str], labeled_piids: Set[str]
 ) -> pd.DataFrame:
     """
-    Preprocess unlabeled data to match the format of labeled data.
+    Preprocess unlabeled data to match the format of labeled data,
+    filtering out any records present in the labeled set.
 
     Args:
         df: DataFrame containing unlabeled data
         labeled_columns: List of column names from the labeled data
+        labeled_piids: A set of PIIDs from the labeled data to exclude
 
     Returns:
         Preprocessed DataFrame
@@ -143,19 +148,9 @@ def preprocess_unlabeled_data(
     # Make a copy to avoid modifying the original
     processed_df = df.copy()
 
-    # Map USSpending.gov CSV columns to our labeled data format
-    column_mapping = {
-        "award_id_piid": "piid",
-        "prime_award_base_transaction_description": "description",
-        "current_total_value_of_award": "value",
-        "awarding_agency_name": "agency",
-        "recipient_name": "vendor",
-    }
-
-    # Rename columns based on mapping
-    processed_df = processed_df.rename(
-        columns={k: v for k, v in column_mapping.items() if k in processed_df.columns}
-    )
+    # Column mapping/renaming removed - this is now handled upstream by transform_data.py
+    # The input DataFrame 'df' is expected to already have the standard column names:
+    # 'piid', 'description', 'value', 'agency', 'vendor', etc.
 
     # Clean description text
     if "description" in processed_df.columns:
@@ -199,7 +194,19 @@ def preprocess_unlabeled_data(
         if col not in processed_df.columns:
             processed_df[col] = np.nan
 
-    logger.info(f"Preprocessed {len(processed_df)} unlabeled contracts")
+    # Filter out records that are present in the labeled data
+    initial_count = len(processed_df)
+    if "piid" in processed_df.columns and labeled_piids:
+        processed_df = processed_df[~processed_df["piid"].isin(labeled_piids)]
+        removed_count = initial_count - len(processed_df)
+        if removed_count > 0:
+            logger.info(
+                f"Removed {removed_count} unlabeled records found in the labeled dataset."
+            )
+
+    logger.info(
+        f"Preprocessed {len(processed_df)} unlabeled contracts (after filtering)"
+    )
 
     return processed_df
 

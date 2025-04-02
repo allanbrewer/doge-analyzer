@@ -80,7 +80,7 @@ class FeatureFusion:
         # Remove punctuation like .,
         name = re.sub(r"[.,]", "", name)
         # Remove common suffixes like inc, llc (as whole words)
-        name = re.sub(r"\s+(inc|llc|ngo)$", "", name, flags=re.IGNORECASE)
+        name = re.sub(r"\s+(inc|llc|ngo|co)$", "", name, flags=re.IGNORECASE)
         # Replace multiple spaces with single space and strip
         name = re.sub(r"\s+", " ", name).strip()
         return name if name else "Unknown"  # Return "Unknown" if empty after cleaning

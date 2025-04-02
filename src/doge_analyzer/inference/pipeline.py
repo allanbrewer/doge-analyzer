@@ -16,7 +16,7 @@ from joblib import dump, load
 # Removed plt, sns, PCA, TSNE, RandomForestClassifier imports as they are now in separate modules
 
 from doge_analyzer.data.load import load_labeled_data, load_multiple_unlabeled_files
-from doge_analyzer.data.preprocess import (
+from doge_analyzer.data.process import (  # Renamed module
     preprocess_labeled_data,
     preprocess_unlabeled_data,
     align_dataframes,
@@ -75,8 +75,9 @@ class ContractAnomalyPipeline:
         self.feature_fusion = None
         self.anomaly_detector = None
 
-        # Track fitted state
+        # Track fitted state and data from fit
         self.fitted = False
+        self.labeled_piids: set = set()  # Store PIIDs from labeled data
 
     def fit(
         self,
@@ -100,8 +101,22 @@ class ContractAnomalyPipeline:
         processed_labeled_df = preprocess_labeled_data(labeled_df)
 
         if processed_labeled_df.empty:
-            logger.error("Preprocessing resulted in an empty DataFrame. Cannot fit.")
+            logger.error(
+                "Preprocessing labeled data resulted in an empty DataFrame. Cannot fit."
+            )
             return
+
+        # Store PIIDs from the labeled data for filtering during prediction
+        if "piid" in processed_labeled_df.columns:
+            self.labeled_piids = set(processed_labeled_df["piid"].dropna().unique())
+            logger.info(
+                f"Stored {len(self.labeled_piids)} unique PIIDs from labeled data."
+            )
+        else:
+            logger.warning(
+                "Column 'piid' not found in labeled data. Cannot filter unlabeled data later."
+            )
+            self.labeled_piids = set()
 
         # --- Text Feature Extraction ---
         logger.info(
@@ -216,9 +231,7 @@ class ContractAnomalyPipeline:
         output_dir: Optional[str] = None,
         batch_size: int = 8,
         threshold: Optional[float] = None,
-        extract_dir: Optional[str] = None,
         sample_size: Optional[int] = None,
-        department_filter: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Predict anomalies in unlabeled data (flags contracts similar to training data).
@@ -228,9 +241,7 @@ class ContractAnomalyPipeline:
             output_dir: Directory to save results
             batch_size: Batch size for BERT feature extraction
             threshold: Custom threshold for anomaly detection (overrides fitted threshold)
-            extract_dir: Directory to extract zip files
             sample_size: Number of contracts to sample
-            department_filter: Filter to only include files from a specific department
 
         Returns:
             DataFrame with anomaly predictions and scores
@@ -244,21 +255,29 @@ class ContractAnomalyPipeline:
         # Load unlabeled data using the updated function
         unlabeled_df = load_multiple_unlabeled_files(
             input_paths=unlabeled_data_paths,
-            extract_dir=extract_dir,
             sample_size=sample_size,
-            department_filter=department_filter,
         )
 
         if unlabeled_df.empty:
             logger.error("No unlabeled data loaded")
             return pd.DataFrame()
 
-        # Preprocess unlabeled data
+        # Preprocess unlabeled data, passing labeled PIIDs for filtering
+        logger.info(
+            f"Preprocessing unlabeled data and filtering against {len(self.labeled_piids)} labeled PIIDs."
+        )
         processed_unlabeled_df = preprocess_unlabeled_data(
             unlabeled_df,
             self.feature_fusion.numerical_columns
             + self.feature_fusion.categorical_columns,
+            self.labeled_piids,  # Pass the stored PIIDs
         )
+
+        if processed_unlabeled_df.empty:
+            logger.error(
+                "Preprocessing unlabeled data resulted in an empty DataFrame (possibly after filtering). Cannot predict."
+            )
+            return pd.DataFrame()
 
         # Extract text features
         logger.info("Extracting text features from unlabeled data")
@@ -408,9 +427,7 @@ def run_pipeline(
     contamination: float = 0.1,
     batch_size: int = 8,
     threshold: Optional[float] = None,
-    extract_dir: Optional[str] = None,
     sample_size: Optional[int] = None,
-    department_filter: Optional[str] = None,
     save_model: bool = True,
 ) -> pd.DataFrame:
     """
@@ -425,9 +442,7 @@ def run_pipeline(
         contamination: Expected proportion of outliers in the data
         batch_size: Batch size for BERT feature extraction
         threshold: Custom threshold for anomaly detection
-        extract_dir: Directory to extract zip files
         sample_size: Number of contracts to sample
-        department_filter: Filter to only include files from a specific department
         save_model: Whether to save the trained model
 
     Returns:
@@ -454,9 +469,7 @@ def run_pipeline(
         output_dir=output_dir,
         batch_size=batch_size,
         threshold=threshold,
-        extract_dir=extract_dir,
         sample_size=sample_size,
-        department_filter=department_filter,
     )
 
     return result_df

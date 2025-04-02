@@ -64,68 +64,24 @@ def load_labeled_data(file_path: str) -> pd.DataFrame:
         raise
 
 
-def extract_csv_from_zip(
-    zip_file_path: str, output_dir: Optional[str] = None
-) -> List[str]:
-    """
-    Extract CSV files from a zip file.
-    Args:
-        zip_file_path: Path to the zip file
-        output_dir: Directory to extract files to (defaults to same directory as zip)
-    Returns:
-        List of paths to extracted CSV files
-    """
-    if output_dir is None:
-        output_dir = os.path.dirname(zip_file_path)
-
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-
-    extracted_files = []
-
-    try:
-        with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
-            # Get list of CSV files in the zip
-            csv_files = [f for f in zip_ref.namelist() if f.lower().endswith(".csv")]
-
-            # Extract CSV files
-            for csv_file in csv_files:
-                zip_ref.extract(csv_file, output_dir)
-                extracted_path = os.path.join(output_dir, csv_file)
-                extracted_files.append(extracted_path)
-
-        logger.info(f"Extracted {len(extracted_files)} CSV files from {zip_file_path}")
-        return extracted_files
-
-    except Exception as e:
-        logger.error(f"Error extracting CSV files from {zip_file_path}: {e}")
-        raise
-
-
+# Removed extract_csv_from_zip function as extraction is handled upstream by the download orchestrator.
 def load_unlabeled_data_from_file(
     file_path: str,
-    extract_dir: Optional[str] = None,
+    # extract_dir parameter removed
     sample_size: Optional[int] = None,
 ) -> pd.DataFrame:
     """
-    Load unlabeled data from a single file (ZIP or CSV).
+    Load unlabeled data from a single file (CSV or JSON).
     Args:
-        file_path: Path to the file (ZIP or CSV)
-        extract_dir: Directory to extract files to (if ZIP)
+        file_path: Path to the file (CSV or JSON)
         sample_size: Number of contracts to sample (if None, load all)
     Returns:
         DataFrame containing the unlabeled data
     """
-    csv_files = []
-    if file_path.lower().endswith(".zip"):
-        # Extract CSV files from zip
-        try:
-            csv_files = extract_csv_from_zip(file_path, extract_dir)
-        except Exception as e:
-            logger.error(f"Error processing zip file {file_path}: {e}")
-            return pd.DataFrame()
-    elif file_path.lower().endswith(".csv"):
+    # Handle CSV files
+    if file_path.lower().endswith(".csv"):
         csv_files = [file_path]
+    # Handle JSON files (assuming same structure as labeled data for simplicity)
     elif file_path.lower().endswith(".json"):
         try:
             df = load_json_data(file_path)
@@ -170,17 +126,14 @@ def load_unlabeled_data_from_file(
 
 def load_multiple_unlabeled_files(
     input_paths: Union[str, List[str]],
-    extract_dir: Optional[str] = None,
+    # extract_dir parameter removed
     sample_size: Optional[int] = None,
-    department_filter: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Load unlabeled data from multiple files or a directory.
+    Load unlabeled data from multiple CSV/JSON files or a directory containing them.
     Args:
-        input_paths: Path to a directory, a single file, or a list of file paths
-        extract_dir: Directory to extract zip files to
+        input_paths: Path to a directory, a single file (CSV/JSON), or a list of file paths
         sample_size: Total number of contracts to sample across all files
-        department_filter: Filter to only include files from a specific department
     Returns:
         DataFrame containing the combined unlabeled data
     """
@@ -190,13 +143,15 @@ def load_multiple_unlabeled_files(
     if isinstance(input_paths, str):
         if os.path.isdir(input_paths):
             logger.info(f"Loading data from directory: {input_paths}")
-            # Find all ZIP and CSV files in the directory
-            zip_files = glob.glob(os.path.join(input_paths, "*.zip"))
+            # Find all CSV and JSON files in the directory
             csv_files = glob.glob(os.path.join(input_paths, "*.csv"))
-            file_paths_to_process.extend(zip_files)
+            json_files = glob.glob(
+                os.path.join(input_paths, "*.json")
+            )  # Also look for JSON
             file_paths_to_process.extend(csv_files)
+            file_paths_to_process.extend(json_files)
             logger.info(
-                f"Found {len(zip_files)} ZIP files and {len(csv_files)} CSV files."
+                f"Found {len(csv_files)} CSV files and {len(json_files)} JSON files."
             )
         elif os.path.isfile(input_paths):
             logger.info(f"Loading data from single file: {input_paths}")
@@ -211,28 +166,14 @@ def load_multiple_unlabeled_files(
         logger.error(f"Invalid input type for input_paths: {type(input_paths)}")
         return pd.DataFrame()
 
-    # Filter files by department if requested
-    if department_filter:
-        original_count = len(file_paths_to_process)
-        file_paths_to_process = [
-            f
-            for f in file_paths_to_process
-            if department_filter.lower() in os.path.basename(f).lower()
-        ]
-        logger.info(
-            f"Filtered files by department '{department_filter}'. Kept {len(file_paths_to_process)} out of {original_count}."
-        )
-
-    if not file_paths_to_process:
-        logger.error("No files found to process after filtering.")
-        return pd.DataFrame()
-
     # Load data from each file
     dfs = []
     for file_path in file_paths_to_process:
         try:
             # Pass sample_size=None here, sampling will happen after combining
-            df = load_unlabeled_data_from_file(file_path, extract_dir, sample_size=None)
+            df = load_unlabeled_data_from_file(
+                file_path, sample_size=None
+            )  # extract_dir removed
             if not df.empty:
                 dfs.append(df)
         except Exception as e:

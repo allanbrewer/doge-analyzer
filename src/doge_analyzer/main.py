@@ -114,22 +114,10 @@ def parse_args():
         help="Custom threshold for anomaly detection (overrides model's fitted threshold; higher values flag more similar items)",
     )
     parser.add_argument(
-        "--extract_dir",
-        type=str,
-        default=None,
-        help="Directory to extract zip files (if unlabeled data is zip)",
-    )
-    parser.add_argument(
         "--sample_size",
         type=int,
         default=None,
         help="Number of items to sample from unlabeled data",
-    )
-    parser.add_argument(
-        "--department",
-        type=str,
-        default=None,
-        help="Filter to only include files from a specific department (if applicable to data format)",
     )
     parser.add_argument(
         "--no_save_model",
@@ -228,9 +216,7 @@ def main():
                 output_dir=str(output_dir),  # Use derived output dir
                 batch_size=args.batch_size,
                 threshold=args.threshold,
-                extract_dir=args.extract_dir,  # Keep if needed
                 sample_size=args.sample_size,
-                department_filter=args.department,  # Keep if needed
             )
         except Exception as e:
             logger.error(
@@ -254,9 +240,7 @@ def main():
             contamination=args.contamination,
             batch_size=args.batch_size,
             threshold=args.threshold,
-            extract_dir=args.extract_dir,  # Keep if needed
             sample_size=args.sample_size,
-            department_filter=args.department,  # Keep if needed
             save_model=not args.no_save_model,  # Save to derived model_dir path inside run_pipeline
         )
 
