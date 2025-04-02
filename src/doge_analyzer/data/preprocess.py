@@ -94,11 +94,7 @@ def preprocess_labeled_data(df: pd.DataFrame) -> pd.DataFrame:
     if "value" in processed_df.columns:
         processed_df["normalized_value"] = processed_df["value"].apply(normalize_value)
 
-    # Normalize savings value
-    if "savings" in processed_df.columns:
-        processed_df["normalized_savings"] = processed_df["savings"].apply(
-            normalize_value
-        )
+    # Savings processing removed as requested
 
     # Fill missing values
     processed_df = processed_df.fillna(
@@ -107,7 +103,7 @@ def preprocess_labeled_data(df: pd.DataFrame) -> pd.DataFrame:
             "vendor": "Unknown",
             "clean_description": "",
             "normalized_value": 0.0,
-            "normalized_savings": 0.0,
+            # "normalized_savings": 0.0, # Removed
         }
     )
 
@@ -153,6 +149,7 @@ def preprocess_unlabeled_data(
         "prime_award_base_transaction_description": "description",
         "current_total_value_of_award": "value",
         "awarding_agency_name": "agency",
+        "recipient_name": "vendor",
     }
 
     # Rename columns based on mapping
@@ -192,10 +189,10 @@ def preprocess_unlabeled_data(
             axis=1,
         )
 
-    # Add placeholder for savings (since this is unlabeled data)
-    if "savings" not in processed_df.columns:
-        processed_df["savings"] = np.nan
-        processed_df["normalized_savings"] = 0.0
+    # Placeholder for savings removed as requested
+    # if "savings" not in processed_df.columns:
+    #     processed_df["savings"] = np.nan
+    #     processed_df["normalized_savings"] = 0.0
 
     # Ensure all required columns exist
     for col in labeled_columns:

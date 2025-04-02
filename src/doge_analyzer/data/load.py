@@ -41,8 +41,25 @@ def load_labeled_data(file_path: str) -> pd.DataFrame:
         # Convert to DataFrame
         df = pd.DataFrame(contracts)
 
-        logger.info(f"Loaded {len(df)} labeled contracts from {file_path}")
+        initial_count = len(df)
+        logger.info(
+            f"Loaded {initial_count} labeled contracts initially from {file_path}"
+        )
 
+        # Filter out contracts with specific piid values
+        if "piid" in df.columns:
+            filter_values = ["Unavailable", "Charge Card Purchase"]
+            original_count = len(df)
+            df = df[~df["piid"].isin(filter_values)]
+            removed_count = original_count - len(df)
+            if removed_count > 0:
+                logger.info(
+                    f"Removed {removed_count} contracts with piid in {filter_values}."
+                )
+        else:
+            logger.warning("Column 'piid' not found, skipping filtering.")
+
+        logger.info(f"Returning {len(df)} labeled contracts after filtering.")
         return df
     except Exception as e:
         logger.error(f"Error loading labeled data from {file_path}: {e}")
