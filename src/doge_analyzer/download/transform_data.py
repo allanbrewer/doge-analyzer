@@ -8,28 +8,13 @@ import zipfile
 import shutil
 import sys
 
+from doge_analyzer.download.keyword import keywords
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-# Import the keywords from keyword.py
-# Import the keywords from the local keyword.py
-try:
-    # Use relative import within the same package
-    from .keyword import keywords
-
-    if keywords:
-        logger.info(
-            f"Successfully imported keywords from .keyword: {', '.join(keywords.keys())}"
-        )
-    else:
-        logger.warning("Imported keywords from .keyword, but the dictionary is empty.")
-        keywords = None  # Ensure it's None if empty
-except ImportError as e:
-    logger.error(f"Failed to import keywords from .keyword: {e}")
-    keywords = None
 
 
 def setup_keywords():
@@ -86,15 +71,12 @@ def process_csv_file(
         # Load and filter
         df = pd.read_csv(csv_path, low_memory=False)
 
-        # Define columns to keep based on award type
         # Define columns to keep based on award type and map to target names
         # Target names align with src/doge_analyzer/data/process.py mapping
         if sub_award_type == "contract":
             column_map = {
                 "award_id_piid": "piid",
                 "prime_award_base_transaction_description": "description",
-                # "action_type_code": "action_type", # Keep if needed later
-                # "total_dollars_obligated": "obligated_amount", # Keep if needed later
                 "current_total_value_of_award": "value",
                 "period_of_performance_current_end_date": "end_date",
                 "recipient_name": "vendor",
@@ -126,7 +108,7 @@ def process_csv_file(
             date_column = "period_of_performance_end_date"
             if date_column not in df.columns:
                 logger.warning(f"No performance end date column found in {csv_file}")
-                return None
+                return None, None
 
         # Convert date column to datetime
         df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
@@ -136,7 +118,7 @@ def process_csv_file(
 
         if active_df.empty:
             logger.info("  No active rows found")
-            return None
+            return None, None
 
         # Filter to only include columns that exist in the dataframe
         existing_columns_original = [
@@ -151,7 +133,7 @@ def process_csv_file(
             active_df = active_df[existing_columns_original]
         else:
             logger.warning(f"No relevant columns found in {csv_file}")
-            return None  # Skip if no relevant columns
+            return None, None  # Skip if no relevant columns
 
         logger.info(f"  Total rows: {len(df)}, Active rows: {len(active_df)}")
 
@@ -169,16 +151,20 @@ def process_csv_file(
                     break
             else:
                 logger.warning(f"No description column found in {csv_file}")
-                return None
+                return None, None
 
-        # Filter active contracts/grants with matching keywords in description
-        flagged_df = active_df[
-            active_df[desc_column].fillna("").str.contains(pattern, na=False)
-        ]
+        if pattern:
+            # Filter active contracts/grants with matching keywords in description
+            flagged_df = active_df[
+                active_df[desc_column].fillna("").str.contains(pattern, na=False)
+            ]
 
-        if flagged_df.empty:
-            logger.info("  No flagged rows found")
-            return None
+            if flagged_df.empty:
+                logger.info("  No flagged rows found")
+                return None, None
+        else:
+            # If no keywords are used, just copy the active_df
+            flagged_df = active_df.copy()
 
         # Save flagged file with department acronym and award type
         flagged_path = os.path.join(
@@ -187,25 +173,25 @@ def process_csv_file(
         flagged_df.to_csv(flagged_path, index=False)
         logger.info(f"  Saved {len(flagged_df)} flagged rows to {flagged_path}")
 
-        return flagged_path
+        return flagged_path, column_map
 
     except Exception as e:
         logger.error(f"Error processing {csv_file}: {str(e)}")
         return None
 
 
-def combine_csv_files(file_paths, output_file, file_type):
+def combine_csv_files(file_paths, output_file, sub_award_type, column_map):
     """Combine multiple CSV files into a single master file"""
     if not file_paths:
-        logger.warning(f"No {file_type} files to combine")
+        logger.warning(f"No {sub_award_type} files to combine")
         return False
 
     valid_paths = [p for p in file_paths if p and os.path.exists(p)]
     if not valid_paths:
-        logger.warning(f"No valid {file_type} files found")
+        logger.warning(f"No valid {sub_award_type} files found")
         return False
 
-    logger.info(f"Joining {len(valid_paths)} {file_type} files...")
+    logger.info(f"Joining {len(valid_paths)} {sub_award_type} files...")
     try:
         master_df = pd.concat(
             [pd.read_csv(f, low_memory=False) for f in valid_paths], ignore_index=True
@@ -217,7 +203,6 @@ def combine_csv_files(file_paths, output_file, file_type):
             agg_dict = {
                 "current_total_value_of_award": "max",
                 "prime_award_base_transaction_description": "first",
-                # "action_type_code": "last", # Keep if needed
                 "recipient_name": "first",
                 "awarding_agency_name": "first",
                 "period_of_performance_current_end_date": "max",
@@ -270,21 +255,26 @@ def combine_csv_files(file_paths, output_file, file_type):
         logger.info(f"Deduped rows: {len(master_df)} rows")
 
         master_df.to_csv(output_file, index=False)
-        logger.info(f"{file_type.capitalize()} dataset: saved to {output_file}")
+        logger.info(f"{sub_award_type.capitalize()} dataset: saved to {output_file}")
         return True
     except Exception as e:
-        logger.error(f"Error combining {file_type} files: {str(e)}")
+        logger.error(f"Error combining {sub_award_type} files: {str(e)}")
         return False
 
 
-def process_zip_files(zip_files, dept_name, dept_acronym, sub_award_type, output_dir):
+def process_zip_files(
+    zip_files, dept_name, dept_acronym, sub_award_type, output_dir, use_keywords
+):
     """Process all zip files for a department and award type"""
     # Create temporary directory for extraction
     temp_dir = os.path.join(output_dir, "temp_extract")
     os.makedirs(temp_dir, exist_ok=True)
 
     # Setup
-    pattern = setup_keywords()
+    if use_keywords:
+        pattern = setup_keywords()
+    else:
+        pattern = None
     today_date = datetime.now().strftime("%Y-%m-%d")
 
     # List to hold flagged file paths
@@ -312,7 +302,7 @@ def process_zip_files(zip_files, dept_name, dept_acronym, sub_award_type, output
             logger.info(f"Found {len(csv_files)} CSV files in {zip_path}")
 
             for csv_path in csv_files:
-                flagged_path = process_csv_file(
+                flagged_path, column_map = process_csv_file(
                     csv_path,
                     output_dir,
                     pattern,
@@ -338,22 +328,28 @@ def process_zip_files(zip_files, dept_name, dept_acronym, sub_award_type, output
             )
 
             success = combine_csv_files(
-                flagged_files, master_file_path, "flagged", sub_award_type
+                flagged_files, master_file_path, sub_award_type, column_map
             )  # Pass sub_award_type
 
             # Delete individual flagged files after successful combination
             if success:
+                logger.info(f"Successfully combined files into {master_file_path}")
                 logger.info("Cleaning up temporary flagged files...")
                 for temp_file in flagged_files:
-                    if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                else:
-                    logger.error(
-                        f"Failed to combine flagged files into {master_file_path}"
-                    )
-                    return None  # Return None if combination failed
-
-            return master_file_path  # Return the path to the final combined file
+                    try:
+                        if os.path.exists(temp_file):
+                            os.remove(temp_file)
+                    except OSError as e:
+                        logger.warning(
+                            f"Could not remove temporary file {temp_file}: {e}"
+                        )
+                return master_file_path  # Return path on success
+            else:
+                # This block executes if combine_csv_files returned False
+                logger.error(
+                    f"combine_csv_files function failed for {master_file_path}"
+                )
+                return None  # Return None if combination failed
         else:
             logger.info(f"No flagged files found for {dept_name} ({sub_award_type})")
             return None  # Return None if no flagged files were generated
@@ -365,20 +361,20 @@ def process_zip_files(zip_files, dept_name, dept_acronym, sub_award_type, output
 
 
 def main(
-    zip_dir="raw_data",
-    output_dir=None,
+    zip_dir="data/raw_data",
     dept_name=None,
     dept_acronym=None,
     sub_award_type="contract",
+    use_keywords=False,
 ):
     """Process zip files for a specific department and award type
 
     Args:
         zip_dir: Directory containing zip files
-        output_dir: Directory for output files
         dept_name: Department name as used in the API
         dept_acronym: Department acronym for file naming
         sub_award_type: Type of award to process
+        use_keywords: Flag to use keywords for filtering
 
     Returns:
         Exit code (0 for success, 1 for error)
@@ -389,9 +385,8 @@ def main(
 
     # Define the temporary processing directory (within the script's execution context)
     # The final output goes to data/unlabeled/{sub_award_type}/
-    temp_processing_dir = os.path.join(
-        output_dir if output_dir else ".", "temp_processed_data", dept_acronym
-    )
+    # Use 'data' as the base for the temporary directory
+    temp_processing_dir = os.path.join("data", "temp_processed_data", dept_acronym)
 
     # Create output directory
     os.makedirs(temp_processing_dir, exist_ok=True)
@@ -412,10 +407,14 @@ def main(
 
     logger.info(f"Found {len(zip_files)} zip files for {dept_name} ({sub_award_type})")
 
-    # Process the zip files
     # Process the zip files using the temporary directory for intermediate files
     master_file_path = process_zip_files(
-        zip_files, dept_name, dept_acronym, sub_award_type, temp_processing_dir
+        zip_files,
+        dept_name,
+        dept_acronym,
+        sub_award_type,
+        temp_processing_dir,
+        use_keywords,
     )
 
     # Clean up the temporary processing directory if it exists
@@ -441,13 +440,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--zip-dir",
-        default="raw_data",
+        default="data/raw_data",
         help="Directory containing zip files (default: raw_data)",
-    )
-    parser.add_argument(
-        "--output-dir",  # Now refers to the base directory for temporary processing
-        default=".",
-        help="Base directory for temporary processing files (default: current directory)",
     )
     parser.add_argument(
         "--dept-name",
@@ -465,15 +459,20 @@ if __name__ == "__main__":
         choices=["contract", "grant"],
         help="Type of award to process (default: contract)",
     )
+    parser.add_argument(
+        "--use-keywords",
+        action="store_true",
+        help="Use keywords for filtering (default: False)",
+    )
 
     args = parser.parse_args()
 
     sys.exit(
         main(
             args.zip_dir,
-            args.output_dir,
             args.dept_name,
             args.dept_acronym,
             args.sub_award_type,
+            args.use_keywords,
         )
     )

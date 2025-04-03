@@ -232,6 +232,7 @@ class ContractAnomalyPipeline:
         batch_size: int = 8,
         threshold: Optional[float] = None,
         sample_size: Optional[int] = None,
+        # Removed unused parameters like extract_dir, department_filter
     ) -> pd.DataFrame:
         """
         Predict anomalies in unlabeled data (flags contracts similar to training data).
@@ -241,7 +242,7 @@ class ContractAnomalyPipeline:
             output_dir: Directory to save results
             batch_size: Batch size for BERT feature extraction
             threshold: Custom threshold for anomaly detection (overrides fitted threshold)
-            sample_size: Number of contracts to sample
+            sample_size: Number of contracts to sample (applied after loading all files)
 
         Returns:
             DataFrame with anomaly predictions and scores
@@ -255,7 +256,7 @@ class ContractAnomalyPipeline:
         # Load unlabeled data using the updated function
         unlabeled_df = load_multiple_unlabeled_files(
             input_paths=unlabeled_data_paths,
-            sample_size=sample_size,
+            sample_size=sample_size,  # Sampling happens after combining files in load_multiple_unlabeled_files
         )
 
         if unlabeled_df.empty:
@@ -334,7 +335,49 @@ class ContractAnomalyPipeline:
                 f"anomaly_predictions_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}.csv",
             )
             result_df.to_csv(output_path, index=False)
-            logger.info(f"Results saved to {output_path}")
+            logger.info(f"Full results saved to {output_path}")
+
+            # --- Save filtered results ---
+            try:
+                logger.info("Filtering results for 'for_review' contracts...")
+                filtered_df = result_df[result_df["for_review"] == True].copy()
+
+                # Define desired columns and order
+                final_columns = [
+                    "piid",
+                    "description",
+                    "value",
+                    "vendor",
+                    "agency",
+                    "end_date",  # This column might not exist if grants were processed
+                    "anomaly_score",
+                    "for_review",
+                ]
+
+                # Select only existing columns from the desired list
+                existing_final_columns = [
+                    col for col in final_columns if col in filtered_df.columns
+                ]
+
+                if not existing_final_columns:
+                    logger.warning(
+                        "No specified columns found in the filtered data. Cannot save filtered file."
+                    )
+                else:
+                    # Reorder and select
+                    filtered_df_final = filtered_df[existing_final_columns]
+
+                    # Define final output path
+                    final_output_path = os.path.join(
+                        output_dir, "anomaly_predictions.csv"
+                    )
+                    filtered_df_final.to_csv(final_output_path, index=False)
+                    logger.info(
+                        f"Filtered results ('for_review' = True) saved to {final_output_path} with columns: {existing_final_columns}"
+                    )
+
+            except Exception as e:
+                logger.error(f"Error saving filtered results: {e}")
 
         # Log counts for both flags (both now indicate similarity to training data)
         count_anomalous_contamination = result_df["is_anomalous_by_contamination"].sum()
@@ -429,6 +472,7 @@ def run_pipeline(
     threshold: Optional[float] = None,
     sample_size: Optional[int] = None,
     save_model: bool = True,
+    # Removed unused parameters like extract_dir, department_filter
 ) -> pd.DataFrame:
     """
     Run the complete pipeline from data loading to anomaly prediction.
@@ -470,6 +514,7 @@ def run_pipeline(
         batch_size=batch_size,
         threshold=threshold,
         sample_size=sample_size,
+        # Pass other relevant args if needed, but extract_dir/dept_filter are handled upstream or removed
     )
 
     return result_df

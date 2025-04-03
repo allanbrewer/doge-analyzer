@@ -8,25 +8,14 @@ import json
 import glob
 import time
 
+from doge_analyzer.download.download_awards import main as download_awards
+from doge_analyzer.download.transform_data import process_zip_files
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-# Try to import modules from different possible paths
-# Use relative imports for modules within the same package
-try:
-    from .download_awards import main as download_awards
-    from .transform_data import main as transform_data
-
-    logger.info("Successfully imported download_awards and transform_data modules.")
-except ImportError as e:
-    logger.error(f"Failed to import required modules: {e}")
-    # Depending on severity, you might want to exit or raise the error
-    raise ImportError(
-        "Could not import required download modules (download_awards, transform_data). Check file structure."
-    ) from e
 
 # Define department mapping (API name to acronym)
 DEPARTMENTS = {
@@ -63,8 +52,8 @@ def process_department(
     award_types,
     start_date=None,
     end_date=None,
-    # output_base_dir removed, transform_data handles final output location
     skip_download=False,
+    use_keywords=False,
 ):
     """Process all award types for a single department"""
     results = {}
@@ -77,7 +66,6 @@ def process_department(
         zip_files = []
 
         # Step 1: Download contract data (if not skipped)
-        # Step 1: Download data (if not skipped)
         if not skip_download:
             logger.info(f"Attempting download for {dept_name} - {award_type}...")
             # download_awards returns an exit code (0 for success)
@@ -92,14 +80,14 @@ def process_department(
                     f"Download step failed or produced no files for {dept_name} ({award_type}). Skipping transform."
                 )
                 continue
-            # If download succeeded, transform_data will find the files in raw_data
+            # If download succeeded, transform_data will find the files in data/raw_data
             logger.info(f"Download step completed for {dept_name} - {award_type}.")
         else:
             # Find existing zip files for this department and award type
             # Format: department_of_X_awardtype_date_to_date.zip
             dept_name_lower = dept_name.lower().replace(" ", "_")
             zip_pattern = os.path.join(
-                "raw_data", f"{dept_name_lower}_{award_type}_*.zip"
+                "data/raw_data", f"{dept_name_lower}_{award_type}_*.zip"
             )
             zip_files = glob.glob(zip_pattern)
 
@@ -113,38 +101,47 @@ def process_department(
                 f"Found {len(zip_files)} existing zip files for {dept_name} ({award_type})"
             )
 
-        # Step 2: Transform and filter data (transform_data finds zips in raw_data)
+        # Step 2: Transform and filter data (transform_data finds zips in data/raw_data)
         logger.info(f"Attempting transform for {dept_name} - {award_type}...")
         # transform_data now handles its own temp dirs and outputs to data/unlabeled/
-        # It returns the path to the final file or None/1 on failure
-        transform_status = transform_data(
-            zip_dir="raw_data",  # Still needed to know where to look for zips
-            # output_dir is no longer needed here, transform_data manages temp/final paths
-            dept_name=dept_name,
-            dept_acronym=dept_acronym,
-            sub_award_type=award_type,
+        # It returns the path to the final file on success, or None on failure
+        # Call process_zip_files directly
+        # It needs the list of zip files for the specific dept/type
+        dept_name_lower = dept_name.lower().replace(" ", "_")
+        zip_pattern = os.path.join(
+            "data/raw_data", f"{dept_name_lower}_{award_type}_*.zip"
         )
+        current_zip_files = glob.glob(zip_pattern)
 
-        # transform_data returns 0 on success, 1 on failure/no data
-        if transform_status == 0:
-            # Construct the expected final output path to record it
-            final_output_dir = os.path.join("data", "unlabeled", award_type)
-            final_file_path = os.path.join(
-                final_output_dir, f"{dept_acronym}_{award_type}_processed.csv"
-            )
-            # Check if the file actually exists after transform_data reported success
-            if os.path.exists(final_file_path):
-                logger.info(
-                    f"Transform step successful for {dept_name} - {award_type}. Output: {final_file_path}"
-                )
-                results[award_type] = final_file_path
-            else:
-                logger.warning(
-                    f"Transform step reported success for {dept_name} - {award_type}, but output file {final_file_path} not found."
-                )
-        else:
+        if not current_zip_files:
             logger.warning(
-                f"Transform step failed or produced no output for {dept_name} - {award_type}."
+                f"No zip files found matching {zip_pattern} for transform step."
+            )
+            final_file_path = None
+        else:
+            # Define the temporary processing directory base path
+            temp_processing_base = os.path.join("data", "temp_processed_data")
+            temp_dept_dir = os.path.join(temp_processing_base, dept_acronym)
+
+            final_file_path = process_zip_files(
+                zip_files=current_zip_files,  # Pass the found zip files
+                dept_name=dept_name,
+                dept_acronym=dept_acronym,
+                sub_award_type=award_type,
+                output_dir=temp_dept_dir,
+                use_keywords=use_keywords,
+            )
+
+        # Check if transform_data returned a valid path AND the file actually exists
+        if final_file_path and os.path.exists(final_file_path):
+            logger.info(
+                f"Transform step successful for {dept_name} - {award_type}. Output: {final_file_path}"
+            )
+            results[award_type] = final_file_path  # Record the actual path
+        else:
+            # Log failure if transform_data returned None or the file doesn't exist
+            logger.warning(
+                f"Transform step failed or produced no output file for {dept_name} - {award_type}."
             )
 
         # Add a small delay between processing different award types
@@ -153,15 +150,15 @@ def process_department(
     return results
 
 
-def process_all_existing_data():  # output_dir removed
-    """Process all existing downloaded data in raw_data without re-downloading"""
+def process_all_existing_data(use_keywords=False):  # output_dir removed
+    """Process all existing downloaded data in data/raw_data without re-downloading"""
     results = {}
 
     # Find all existing zip files
-    zip_files = glob.glob(os.path.join("raw_data", "*.zip"))
+    zip_files = glob.glob(os.path.join("data", "raw_data", "*.zip"))
 
     if not zip_files:
-        logger.warning("No existing zip files found in raw_data directory")
+        logger.warning("No existing zip files found in data/raw_data directory")
         return results
 
     logger.info(f"Found {len(zip_files)} existing zip files to process")
@@ -173,7 +170,6 @@ def process_all_existing_data():  # output_dir removed
         filename = os.path.basename(zip_file)
 
         # Expected format: department_of_X_awardtype_date_to_date.zip
-        # Example: department_of_agriculture_grant_2024-01-01_to_2024-03-31.zip
         parts = filename.split("_")
 
         if len(parts) >= 4:
@@ -223,36 +219,49 @@ def process_all_existing_data():  # output_dir removed
 
         # Output directory logic removed
 
-        # Transform and filter data
-        # Transform and filter data (transform_data finds zips in raw_data)
-        transform_status = transform_data(
-            zip_dir="raw_data",
-            # output_dir removed
-            dept_name=dept_name,
-            dept_acronym=dept_acronym,
-            sub_award_type=award_type,
+        # Transform and filter data (transform_data finds zips in data/raw_data)
+        # It returns the path to the final file on success, or None on failure
+        # Call process_zip_files directly
+        # It needs the list of zip files for the specific dept/type
+        dept_name_lower = dept_name.lower().replace(" ", "_")
+        zip_pattern = os.path.join(
+            "data/raw_data", f"{dept_name_lower}_{award_type}_*.zip"
         )
+        current_zip_files = glob.glob(zip_pattern)
 
-        if transform_status == 0:
-            # Construct the expected final output path
-            final_output_dir = os.path.join("data", "unlabeled", award_type)
-            final_file_path = os.path.join(
-                final_output_dir, f"{dept_acronym}_{award_type}_processed.csv"
-            )
-            if os.path.exists(final_file_path):
-                logger.info(
-                    f"Existing data transform successful for {dept_name} - {award_type}. Output: {final_file_path}"
-                )
-                if dept_acronym not in results:
-                    results[dept_acronym] = {}
-                results[dept_acronym][award_type] = final_file_path
-            else:
-                logger.warning(
-                    f"Existing data transform reported success for {dept_name} - {award_type}, but output file {final_file_path} not found."
-                )
-        else:
+        if not current_zip_files:
             logger.warning(
-                f"Existing data transform failed or produced no output for {dept_name} - {award_type}."
+                f"No zip files found matching {zip_pattern} for transform step."
+            )
+            final_file_path = None
+        else:
+            # Define the temporary processing directory base path
+            temp_processing_base = os.path.join("data", "temp_processed_data")
+            temp_dept_dir = os.path.join(temp_processing_base, dept_acronym)
+
+            final_file_path = process_zip_files(
+                zip_files=current_zip_files,  # Pass the found zip files
+                dept_name=dept_name,
+                dept_acronym=dept_acronym,
+                sub_award_type=award_type,
+                output_dir=temp_dept_dir,  # Pass the temp dir for intermediate files
+                use_keywords=use_keywords,
+            )
+
+        # Check if transform_data returned a valid path AND the file actually exists
+        if final_file_path and os.path.exists(final_file_path):
+            logger.info(
+                f"Existing data transform successful for {dept_name} - {award_type}. Output: {final_file_path}"
+            )
+            if dept_acronym not in results:
+                results[dept_acronym] = {}
+            results[dept_acronym][
+                award_type
+            ] = final_file_path  # Record the actual path
+        else:
+            # Log failure if transform_data returned None or the file doesn't exist
+            logger.warning(
+                f"Existing data transform failed or produced no output file for {dept_name} - {award_type}."
             )
 
         # Add a small delay between processing
@@ -266,9 +275,9 @@ def main(
     award_types=None,
     start_date=None,
     end_date=None,
-    # output_dir removed
     skip_download=False,
     process_existing=False,
+    use_keywords=False,
 ):
     """
     Main orchestration function for the DOGE Analyzer data download service
@@ -278,9 +287,9 @@ def main(
         award_types: List of award types to process
         start_date: Start date for contracts
         end_date: End date for downloads
-        # output_dir removed
-        skip_download: Skip downloading and use existing files in raw_data/
-        process_existing: Process all existing downloaded data in raw_data/
+        skip_download: Skip downloading and use existing files in data/raw_data/
+        process_existing: Process all existing downloaded data in data/raw_data/
+        use_keywords: Use keywords to filter data (default: False)
 
     Returns:
         Exit code (0 for success, 1 for error)
@@ -289,8 +298,10 @@ def main(
 
     # Process all existing data if requested
     if process_existing:
-        logger.info("Processing all existing downloaded data found in raw_data/...")
-        results = process_all_existing_data()
+        logger.info(
+            "Processing all existing downloaded data found in data/raw_data/..."
+        )
+        results = process_all_existing_data(use_keywords)
     else:
         # Use all departments if none specified
         if not departments:
@@ -318,16 +329,15 @@ def main(
                 award_types,
                 start_date,
                 end_date,
-                # output_dir removed
                 skip_download,
+                use_keywords,
             )
 
             if dept_results:
                 results[dept_acronym] = dept_results
 
-    # Save results summary
-    # Save results summary in the current directory or a dedicated logs/ dir
-    summary_dir = "logs"
+    # Save results summary in data/logs/
+    summary_dir = os.path.join("data", "logs")
     os.makedirs(summary_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     summary_file = os.path.join(
@@ -335,15 +345,28 @@ def main(
     )
 
     try:
+        # Filter results to only include entries where a file path was successfully recorded
+        # Ensure nested dictionaries are handled correctly
+        valid_results = {}
+        for dept, types in results.items():
+            if isinstance(types, dict):
+                valid_types = {
+                    k: v for k, v in types.items() if v and isinstance(v, str)
+                }  # Check for non-empty string paths
+                if valid_types:
+                    valid_results[dept] = valid_types
+
         with open(summary_file, "w") as f:
-            json.dump(results, f, indent=2)
+            json.dump(valid_results, f, indent=2)
         logger.info(f"Processing complete! Summary saved to {summary_file}")
     except Exception as e:
         logger.error(f"Failed to save summary file {summary_file}: {e}")
 
-    # Determine overall success (e.g., if at least one file was processed)
-    success = any(results.values())
-    return 0 if success else 1  # Return 0 if something was processed, 1 otherwise
+    # Determine overall success based on whether any valid results were recorded
+    success = bool(valid_results)  # Simpler check if the filtered dict is non-empty
+    return (
+        0 if success else 1
+    )  # Return 0 if at least one file was successfully processed
 
 
 if __name__ == "__main__":
@@ -372,7 +395,6 @@ if __name__ == "__main__":
         default=None,
         help="End date in YYYY-MM-DD format (default: today)",
     )
-    # Output directory argument removed
     parser.add_argument(
         "--skip-download",
         action="store_true",
@@ -382,6 +404,11 @@ if __name__ == "__main__":
         "--process-existing",
         action="store_true",
         help="Process all existing downloaded data without re-downloading (ignores departments and award types arguments)",
+    )
+    parser.add_argument(
+        "--use-keywords",
+        action="store_true",
+        help="Use keywords to filter data (default: False)",
     )
 
     args = parser.parse_args()
@@ -397,8 +424,8 @@ if __name__ == "__main__":
             args.award_types,
             args.start_date,
             args.end_date,
-            # args.output_dir removed
             args.skip_download,
             args.process_existing,
+            args.use_keywords,
         )
     )

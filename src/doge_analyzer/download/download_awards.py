@@ -93,7 +93,7 @@ def fetch_download(
     # Create a deterministic filename based on parameters
     dept_name = department.replace(" ", "_").lower()
     filename = f"{dept_name}_{sub_award_type}_{start_date}_to_{end_date}.zip"
-    download_dir = "raw_data"
+    download_dir = "data/raw_data"
     os.makedirs(download_dir, exist_ok=True)
     file_path = os.path.join(download_dir, filename)
 
