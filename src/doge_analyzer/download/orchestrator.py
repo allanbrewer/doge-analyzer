@@ -43,7 +43,7 @@ DEPARTMENTS = {
 }
 
 # Award types to process
-AWARD_TYPES = ["contract", "grant"]
+AWARD_TYPES = ["contracts", "grants"]
 
 
 def process_department(

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def setup_keywords():
     """
-    Define specific keywords for initial contract download (case-insensitive)
+    Define specific keywords for initial contracts download (case-insensitive)
     Always use the main list which is defined as the sum of all lists.
 
     Returns:
@@ -73,7 +73,7 @@ def process_csv_file(
 
         # Define columns to keep based on award type and map to target names
         # Target names align with src/doge_analyzer/data/process.py mapping
-        if sub_award_type == "contract":
+        if sub_award_type == "contracts":
             column_map = {
                 "award_id_piid": "piid",
                 "prime_award_base_transaction_description": "description",
@@ -198,8 +198,8 @@ def combine_csv_files(file_paths, output_file, sub_award_type, column_map):
         )
 
         # Define aggregation logic based on original column names
-        if sub_award_type == "contract":
-            logger.info("Aggregating combined contract files by award_id_piid...")
+        if sub_award_type == "contracst":
+            logger.info("Aggregating combined contracts files by award_id_piid...")
             agg_dict = {
                 "current_total_value_of_award": "max",
                 "prime_award_base_transaction_description": "first",
@@ -222,8 +222,8 @@ def combine_csv_files(file_paths, output_file, sub_award_type, column_map):
                     "Column 'award_id_piid' not found for grouping contracts."
                 )
 
-        elif sub_award_type == "grant":
-            logger.info("Aggregating combined grant files by award_id_fain...")
+        elif sub_award_type == "grants":
+            logger.info("Aggregating combined grants files by award_id_fain...")
             agg_dict = {
                 "total_obligated_amount": "max",
                 "prime_award_base_transaction_description": "first",
@@ -364,7 +364,7 @@ def main(
     zip_dir="data/raw_data",
     dept_name=None,
     dept_acronym=None,
-    sub_award_type="contract",
+    sub_award_type="contracts",
     use_keywords=False,
 ):
     """Process zip files for a specific department and award type
@@ -436,7 +436,7 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Transform and filter contract data from USA Spending API"
+        description="Transform and filter contracts data from USA Spending API"
     )
     parser.add_argument(
         "--zip-dir",
@@ -455,9 +455,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--sub-award-type",
-        default="contract",
-        choices=["contract", "grant"],
-        help="Type of award to process (default: contract)",
+        default="contracts",
+        choices=["contracts", "grants"],
+        help="Type of award to process (default: contracts)",
     )
     parser.add_argument(
         "--use-keywords",
